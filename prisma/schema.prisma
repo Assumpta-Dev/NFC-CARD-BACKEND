@@ -1,0 +1,156 @@
+// ===========================================================
+// PRISMA SCHEMA - Digital NFC Business Card System
+// ===========================================================
+// Prisma is used as the ORM because it provides:
+//   - Type-safe database access (auto-generated TypeScript types)
+//   - Migration management with version history
+//   - Clean query API that prevents SQL injection by default
+// ===========================================================
+
+
+
+
+  // PostgreSQL is chosen for ACID compliance, strong relational
+  // integrity, and support for JSON fields (future flexibility)
+ 
+datasource db {
+  provider = "postgresql"
+}
+  
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+// ===========================================================
+// USER MODEL
+// Stores all users: card owners and administrators
+// role field distinguishes USER from ADMIN for authorization
+// ===========================================================
+model User {
+  id        String   @id @default(cuid())  // cuid() gives collision-resistant IDs
+  name      String
+  email     String   @unique               // Unique constraint prevents duplicate accounts
+  password  String                         // Stored as bcrypt hash — NEVER plaintext
+  role      Role     @default(USER)        // Default role is USER; admins are set manually
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  cards    Card[]    // One user can have multiple cards (future multi-card support)
+  profile  Profile?  // One-to-one optional profile (created on card activation)
+
+  @@map("users")     // Maps to lowercase plural table name in Postgres
+}
+
+// ===========================================================
+// CARD MODEL
+// Represents the physical NFC/QR card entity
+// Each card has a lifecycle: unassigned → assigned → active
+// ===========================================================
+model Card {
+  id        String     @id @default(cuid())
+  
+  cardId    String     @unique              // The human-readable unique identifier (e.g. CARD_8F3K2L)
+                                            // This is embedded in the QR/NFC URL
+  status    CardStatus @default(UNASSIGNED) // Tracks the card's lifecycle state
+  userId    String?                         // Nullable — null until user claims the card
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  scans     Scan[]  // One card accumulates many scan events over its lifetime
+
+  // Index on cardId because every NFC/QR tap does a lookup by cardId
+  // Without this index, every scan would do a full table scan — unacceptable at scale
+  @@index([cardId])
+  @@index([userId])  // For quickly fetching "all cards belonging to a user"
+  @@map("cards")
+}
+
+// ===========================================================
+// PROFILE MODEL
+// The digital business card content shown to viewers
+// Separated from User so it can be edited independently
+// ===========================================================
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique              // One profile per user
+  fullName    String
+  jobTitle    String?
+  company     String?
+  phone       String?
+  email       String?
+  website     String?
+  bio         String?
+  imageUrl    String?                       // URL to profile photo (CDN or object storage)
+  whatsapp    String?                       // WhatsApp number for direct chat link
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  links       Link[]  // Dynamic social/external links (Instagram, LinkedIn, etc.)
+
+  @@map("profiles")
+}
+
+// ===========================================================
+// LINK MODEL
+// Stores flexible social/external links for a profile
+// Stored separately (not as JSON array) so they can be
+// queried, ordered, and typed individually
+// ===========================================================
+model Link {
+  id        String   @id @default(cuid())
+  profileId String
+  type      String   // e.g. "instagram", "linkedin", "twitter", "custom"
+  label     String   // Display label shown on the card
+  url       String   // The actual URL
+  order     Int      @default(0) // Controls display order on the digital card
+
+  // Relation
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId]) // Fast lookup of all links for a given profile
+  @@map("links")
+}
+
+// ===========================================================
+// SCAN MODEL
+// Records every interaction (tap/scan) with a card
+// This is the analytics data source for the user dashboard
+// Immutable by design — scans are never updated, only created
+// ===========================================================
+model Scan {
+  id         String   @id @default(cuid())
+  cardId     String                         // References Card.cardId (the public ID), not Card.id
+  timestamp  DateTime @default(now())
+  device     String?  // "mobile" or "desktop" — derived from User-Agent
+  ip         String?  // Approximate location source (optional, privacy-sensitive)
+  userAgent  String?  // Full User-Agent string for device detection
+
+  // Relation — uses card's internal id for FK integrity
+  card       Card    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  // Index on cardId + timestamp for efficient analytics queries like
+  // "all scans for this card in the last 7 days" (ORDER BY timestamp DESC)
+  @@index([cardId, timestamp])
+  @@map("scans")
+}
+
+// ===========================================================
+// ENUMS
+// Using enums instead of raw strings prevents invalid states
+// and is self-documenting at the schema level
+// ===========================================================
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CardStatus {
+  UNASSIGNED  // Card exists in system but not linked to any user
+  ACTIVE      // Card is linked to a user and has an active profile
+}
