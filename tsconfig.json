@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "noImplicitAny": false,
     "types":["node"],
     "target": "ES2020",
     "module": "commonjs",
