@@ -11,7 +11,7 @@
 // The cardId column is indexed so lookups are O(log n).
 // ===========================================================
 
-import { CardStatus } from '@prisma/client';
+import { Card, CardStatus } from '@prisma/client';
 import { AppError } from '../middleware/error.middleware';
 import logger from '../utils/logger';
 import prisma from "../lib/prisma";
@@ -77,7 +77,7 @@ export const CardService = {
    * Generates unique IDs and retries on the rare collision.
    */
   async createCards(count: number = 1) {
-    const createdCards = [];
+    const createdCards: Card[] = [];
 
     for (let i = 0; i < count; i++) {
       let cardId: string;

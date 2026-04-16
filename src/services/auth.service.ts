@@ -8,18 +8,18 @@
 //   - Logic can be reused across multiple routes or jobs
 // ===========================================================
 
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { CardStatus } from '@prisma/client';
-import { RegisterBody, LoginBody, JwtPayload } from '../types';
-import { AppError } from '../middleware/error.middleware';
-import logger from '../utils/logger';
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { Card, CardStatus } from "@prisma/client";
+import { RegisterBody, LoginBody, JwtPayload } from "../types";
+import { AppError } from "../middleware/error.middleware";
+import logger from "../utils/logger";
 import prisma from "../lib/prisma";
 
 // JWT configuration — token expires in 7 days for good UX
 // Short-lived access tokens (15min) + refresh tokens are ideal for high-security apps,
 // but 7-day tokens are a pragmatic balance for an MVP
-const JWT_EXPIRY = '7d';
+const JWT_EXPIRY = "7d";
 
 export const AuthService = {
   /**
@@ -36,21 +36,24 @@ export const AuthService = {
     // ----------------------------------------------------------
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      throw new AppError(409, 'An account with this email already exists');
+      throw new AppError(409, "An account with this email already exists");
     }
 
     // ----------------------------------------------------------
     // If a cardId is provided, validate it before creating user
     // This prevents orphaned users if the card ID is invalid
     // ----------------------------------------------------------
-    let cardToActivate = null;
+    let cardToActivate: Card | null = null;
     if (cardId) {
       cardToActivate = await prisma.card.findUnique({ where: { cardId } });
       if (!cardToActivate) {
-        throw new AppError(404, 'Card not found. Please check your card ID.');
+        throw new AppError(404, "Card not found. Please check your card ID.");
       }
       if (cardToActivate.status === CardStatus.ACTIVE) {
-        throw new AppError(409, 'This card is already activated by another user');
+        throw new AppError(
+          409,
+          "This card is already activated by another user",
+        );
       }
     }
 
@@ -90,14 +93,23 @@ export const AuthService = {
       return newUser;
     });
 
-    logger.info('New user registered', { userId: user.id, email: user.email });
+    logger.info("New user registered", { userId: user.id, email: user.email });
 
     // Generate JWT for immediate login after registration
-    const token = generateToken({ userId: user.id, email: user.email, role: user.role });
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
     return {
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     };
   },
 
@@ -116,23 +128,33 @@ export const AuthService = {
     // timing-based user enumeration (takes same time whether user exists or not)
     // Use a real bcrypt hash here because bcrypt.compare can throw on malformed hashes,
     // which would turn an ordinary "user not found" case into an unexpected 500.
-    const dummyHash = '$2a$12$3euPcmQFCiblsZeEu5s7p.9OFC1JxB/hb7naWsyDmcHfA7F0WqG7K';
+    const dummyHash =
+      "$2a$12$3euPcmQFCiblsZeEu5s7p.9OFC1JxB/hb7naWsyDmcHfA7F0WqG7K";
     const isValid = user
       ? await bcrypt.compare(password, user.password)
       : await bcrypt.compare(password, dummyHash).then(() => false);
 
     if (!user || !isValid) {
       // Generic message: don't reveal whether the email exists
-      throw new AppError(401, 'Invalid email or password');
+      throw new AppError(401, "Invalid email or password");
     }
 
-    logger.info('User logged in', { userId: user.id });
+    logger.info("User logged in", { userId: user.id });
 
-    const token = generateToken({ userId: user.id, email: user.email, role: user.role });
+    const token = generateToken({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
 
     return {
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     };
   },
 };
@@ -143,7 +165,7 @@ export const AuthService = {
  */
 function generateToken(payload: JwtPayload): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error('JWT_SECRET is not configured');
+  if (!secret) throw new Error("JWT_SECRET is not configured");
 
   return jwt.sign(payload, secret, { expiresIn: JWT_EXPIRY });
 }
