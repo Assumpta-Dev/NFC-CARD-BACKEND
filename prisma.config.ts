@@ -5,8 +5,7 @@ export default defineConfig({
   schema: "./prisma/schema.prisma",
 
   migrations: {
-    // Seed command run via ts-node since the project uses TypeScript
-    seed: 'ts-node prisma/seed.ts',
+    seed: "ts-node prisma/seed.ts",
   },
 
   datasource: {

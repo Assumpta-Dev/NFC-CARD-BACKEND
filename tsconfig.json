@@ -1,11 +1,12 @@
 {
   "compilerOptions": {
     "noImplicitAny": false,
-    "types":["node"],
+    "types": ["node"],
     "target": "ES2020",
     "module": "commonjs",
     "lib": ["ES2020"],
-    "outDir": "./dist",
+    "outDir": "dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,6 +20,6 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true
   },
-  "include": ["src/**/*", "prisma.config.ts"],
-  "exclude": ["node_modules", "dist", "prisma"]
+  "include": ["src"],
+  "exclude": ["node_modules", "../dist", "prisma"]
 }
