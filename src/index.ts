@@ -168,6 +168,9 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   logger.info(`🚀 NFC Card API running on http://localhost:${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
+
+  // Extra Check: Confirm which frontend your backend is trusting
+  logger.info(`🔗 Allowing CORS from: ${process.env.FRONTEND_URL}`);
 });
 
 // Handle uncaught errors gracefully — log before crash
