@@ -37,6 +37,12 @@ const options: swaggerJsdoc.Options = {
             name: { type: 'string', example: 'John Doe' },
             email: { type: 'string', example: 'john@example.com' },
             password: { type: 'string', example: 'password123' },
+            role: {
+              type: 'string',
+              enum: ['USER', 'BUSINESS'],
+              example: 'BUSINESS',
+              description: 'Optional account type. ADMIN cannot be created from signup.',
+            },
             cardId: { type: 'string', example: 'CARD_AB3K2L', description: 'Optional: activate a card at registration' },
           },
         },

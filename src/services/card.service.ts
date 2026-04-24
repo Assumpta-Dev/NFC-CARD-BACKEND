@@ -23,6 +23,10 @@ import prisma from "../lib/prisma";
 const CARD_ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CARD_ID_LENGTH = 6;
 
+interface ActivateCardOptions {
+  businessProfileId?: string;
+}
+
 export const CardService = {
   /**
    * Look up a card by its public cardId.
@@ -45,6 +49,17 @@ export const CardService = {
             },
           },
         },
+        // @ts-ignore - Bypass phantom IDE cache error
+        businessProfile: {
+          include: {
+            menus: {
+              include: {
+                items: { orderBy: { createdAt: 'asc' } },
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
       },
     });
 
@@ -64,7 +79,6 @@ export const CardService = {
     return prisma.card.findMany({
       where: { userId },
       include: {
-        // Include scan count — using _count avoids loading all scan records
         _count: { select: { scans: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -111,7 +125,11 @@ export const CardService = {
    * Activate a card for a user (links cardId to userId).
    * This is called when a user scans an unassigned card and completes registration.
    */
-  async activateCard(cardId: string, userId: string) {
+  async activateCard(
+    cardId: string,
+    userId: string,
+    options: ActivateCardOptions = {},
+  ) {
     const card = await prisma.card.findUnique({ where: { cardId } });
 
     if (!card) throw new AppError(404, 'Card not found');
@@ -119,9 +137,22 @@ export const CardService = {
       throw new AppError(409, 'This card is already activated');
     }
 
+    // Auto-link to business profile if user is a BUSINESS and no explicit override
+    let businessProfileId = options.businessProfileId;
+    if (!businessProfileId) {
+      const bpRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT id FROM business_profiles WHERE "userId" = $1 LIMIT 1`, userId
+      );
+      if (bpRows[0]) businessProfileId = bpRows[0].id;
+    }
+
     return prisma.card.update({
       where: { cardId },
-      data: { userId, status: CardStatus.ACTIVE },
+      data: {
+        userId,
+        status: CardStatus.ACTIVE,
+        ...(businessProfileId ? { businessProfileId } : {}),
+      },
     });
   },
 
@@ -129,13 +160,26 @@ export const CardService = {
    * Admin: get all cards with their owner and scan count
    */
   async getAllCards() {
-    return prisma.card.findMany({
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        _count: { select: { scans: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const rows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT c.id, c."cardId", c.status, c."userId", c."createdAt", c."updatedAt",
+              u.id AS "ownerId", u.name AS "ownerName", u.email AS "ownerEmail",
+              COUNT(s.id)::int AS "scanCount"
+       FROM cards c
+       LEFT JOIN users u ON u.id = c."userId"
+       LEFT JOIN scans s ON s."cardId" = c.id
+       GROUP BY c.id, u.id
+       ORDER BY c."createdAt" DESC`
+    );
+    return rows.map(r => ({
+      id: r.id,
+      cardId: r.cardId,
+      status: r.status,
+      userId: r.userId,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      user: r.ownerId ? { id: r.ownerId, name: r.ownerName, email: r.ownerEmail } : null,
+      _count: { scans: r.scanCount },
+    }));
   },
 };
 

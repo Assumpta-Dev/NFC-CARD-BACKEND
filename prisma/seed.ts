@@ -3,11 +3,7 @@
 // ===========================================================
 // Seeds the database with initial data for development/testing
 // Run with: npx prisma db seed
-// Only use this in development — production data goes through APIs
-// ===========================================================
-
-// ===========================================================
-// PRISMA SEED SCRIPT (CLEAN + PRISMA 7 SAFE)
+// Only use this in development - production data goes through APIs
 // ===========================================================
 
 import dotenv from "dotenv";
@@ -21,7 +17,7 @@ const adapter = new PrismaPg(process.env.DATABASE_URL!);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("🌱 Seeding database...");
+  console.log("Seeding database...");
 
   // =========================================================
   // ADMIN USER
@@ -61,7 +57,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ Admin created: ${admin.email}`);
+  console.log(`Admin created: ${admin.email}`);
 
   // =========================================================
   // DEMO USER
@@ -95,7 +91,70 @@ async function main() {
     },
   });
 
-  console.log(`✅ Demo user created: ${demoUser.email}`);
+  console.log(`Demo user created: ${demoUser.email}`);
+
+  // =========================================================
+  // DEMO BUSINESS USER
+  // =========================================================
+  const businessEmail = "business@nfccard.com";
+  const businessPasswordHash = await bcrypt.hash("business123!", 12);
+
+  const demoBusinessUser = await prisma.user.upsert({
+    where: { email: businessEmail },
+    update: {
+      name: "Mama Kitchen",
+      password: businessPasswordHash,
+      role: Role.BUSINESS,
+    },
+    create: {
+      name: "Mama Kitchen",
+      email: businessEmail,
+      password: businessPasswordHash,
+      role: Role.BUSINESS,
+    },
+  });
+
+  await prisma.profile.upsert({
+    where: { userId: demoBusinessUser.id },
+    update: {
+      fullName: "Mama Kitchen",
+      email: businessEmail,
+      jobTitle: "Restaurant Owner",
+      company: "Mama Kitchen",
+    },
+    create: {
+      userId: demoBusinessUser.id,
+      fullName: "Mama Kitchen",
+      email: businessEmail,
+      jobTitle: "Restaurant Owner",
+      company: "Mama Kitchen",
+    },
+  });
+
+  const demoBusinessProfile = await prisma.businessProfile.upsert({
+    where: { userId: demoBusinessUser.id },
+    update: {
+      name: "Mama Kitchen",
+      category: "restaurant",
+      description: "Home-style meals, fresh juice, and breakfast favorites.",
+      location: "Kigali, Rwanda",
+      phone: "0788000002",
+      email: businessEmail,
+      website: "https://mamakitchen.rw",
+    },
+    create: {
+      userId: demoBusinessUser.id,
+      name: "Mama Kitchen",
+      category: "restaurant",
+      description: "Home-style meals, fresh juice, and breakfast favorites.",
+      location: "Kigali, Rwanda",
+      phone: "0788000002",
+      email: businessEmail,
+      website: "https://mamakitchen.rw",
+    },
+  });
+
+  console.log(`Demo business created: ${demoBusinessUser.email}`);
 
   // =========================================================
   // CARDS
@@ -113,20 +172,76 @@ async function main() {
     });
   }
 
-  console.log(`✅ Unassigned cards created`);
+  console.log("Unassigned cards created");
 
   // =========================================================
-  // ACTIVE CARD
+  // ACTIVE PERSONAL CARD
   // =========================================================
   const activeCard = await prisma.card.upsert({
     where: { cardId: "CARD_DEMO1" },
-    update: {},
+    update: {
+      status: CardStatus.ACTIVE,
+      userId: demoUser.id,
+    },
     create: {
       cardId: "CARD_DEMO1",
       status: CardStatus.ACTIVE,
       userId: demoUser.id,
     },
   });
+
+  // =========================================================
+  // ACTIVE BUSINESS CARD
+  // =========================================================
+  await prisma.card.upsert({
+    where: { cardId: "CARD_BIZ01" },
+    update: {
+      status: CardStatus.ACTIVE,
+      userId: demoBusinessUser.id,
+      businessProfileId: demoBusinessProfile.id,
+    } as any,
+    create: {
+      cardId: "CARD_BIZ01",
+      status: CardStatus.ACTIVE,
+      userId: demoBusinessUser.id,
+      businessProfileId: demoBusinessProfile.id,
+    } as any,
+  });
+
+  console.log("Business card created");
+
+  // =========================================================
+  // BUSINESS MENUS
+  // =========================================================
+  const breakfastMenu = await ensureMenu(demoBusinessProfile.id, "Breakfast");
+  const drinksMenu = await ensureMenu(demoBusinessProfile.id, "Drinks");
+
+  await ensureMenuItem(
+    breakfastMenu.id,
+    "Rolex Wrap",
+    3500,
+    "Chapati rolled with egg, vegetables, and house sauce.",
+  );
+  await ensureMenuItem(
+    breakfastMenu.id,
+    "Mandazi Plate",
+    2500,
+    "Freshly baked mandazi served with tea.",
+  );
+  await ensureMenuItem(
+    drinksMenu.id,
+    "Passion Juice",
+    2000,
+    "Fresh passion fruit juice served cold.",
+  );
+  await ensureMenuItem(
+    drinksMenu.id,
+    "African Tea",
+    1800,
+    "Spiced milk tea with ginger and cardamom.",
+  );
+
+  console.log("Business menus seeded");
 
   // =========================================================
   // SCAN DATA
@@ -152,17 +267,57 @@ async function main() {
     });
   }
 
-  console.log(`✅ Scan analytics seeded`);
-
-  console.log("\n🎉 Seed completed successfully!");
+  console.log("Scan analytics seeded");
+  console.log("Seed completed successfully");
 }
 
-// ===========================================================
-// SAFE EXECUTION WRAPPER
-// ===========================================================
+async function ensureMenu(businessId: string, title: string) {
+  const existingMenu = await prisma.menu.findFirst({
+    where: { businessId, title },
+  });
+
+  if (existingMenu) {
+    return existingMenu;
+  }
+
+  return prisma.menu.create({
+    data: {
+      businessId,
+      title,
+    },
+  });
+}
+
+async function ensureMenuItem(
+  menuId: string,
+  name: string,
+  price: number,
+  description: string,
+) {
+  const existingItem = await prisma.menuItem.findFirst({
+    where: { menuId, name },
+  });
+
+  if (existingItem) {
+    return prisma.menuItem.update({
+      where: { id: existingItem.id },
+      data: { price, description },
+    });
+  }
+
+  return prisma.menuItem.create({
+    data: {
+      menuId,
+      name,
+      price,
+      description,
+    },
+  });
+}
+
 main()
   .catch((e) => {
-    console.error("❌ Seed failed:", e);
+    console.error("Seed failed:", e);
     process.exit(1);
   })
   .finally(async () => {

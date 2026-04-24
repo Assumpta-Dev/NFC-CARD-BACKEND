@@ -28,10 +28,10 @@ async function ensureProfileExists(userId: string) {
 
   if (profile) return profile;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { name: true, email: true },
-  });
+  const userRows = await prisma.$queryRawUnsafe<any[]>(
+    `SELECT name, email FROM users WHERE id = $1 LIMIT 1`, userId
+  );
+  const user = userRows[0] ?? null;
 
   if (!user) {
     throw new AppError(404, "User not found");
@@ -97,6 +97,41 @@ export const ProfileService = {
     return ensureProfileExists(userId);
   },
 
+  // ============================================
+  // ✅ ADD THIS NEW FUNCTION HERE
+  // ============================================
+  /**
+   * Get business profile for a user (if exists)
+   *
+   * Used when:
+   * - A card is scanned
+   * - System needs to decide:
+   *   → personal card OR business card
+   *
+   * Includes:
+   * - Business basic info
+   * - Menus
+   * - Menu items (for restaurant/hotel use case)
+   *
+   * Returns:
+   * - null if user has no business profile
+   * - full business profile if exists
+   */
+  async getBusinessProfile(userId: string) {
+    return prisma.businessProfile.findUnique({
+      where: { userId },
+
+      // Include nested relations so frontend gets full menu
+      include: {
+        menus: {
+          include: {
+            items: true, // menu items (food, services, etc.)
+          },
+        },
+      },
+    });
+  },
+
   /**
    * Update profile data and replace all links.
    * Uses a transaction so links and profile are always in sync.
@@ -115,10 +150,10 @@ export const ProfileService = {
     const { links, ...profileData } = body;
 
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { name: true, email: true },
-      });
+      const userRows = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT name, email FROM users WHERE id = $1 LIMIT 1`, userId
+      );
+      const user = userRows[0] ?? null;
 
       if (!user) {
         throw new AppError(404, "User not found");

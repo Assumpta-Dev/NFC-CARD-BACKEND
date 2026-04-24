@@ -76,6 +76,24 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
 }
 
 /**
+ * requireBusiness — allows access to BUSINESS users and ADMIN (full power).
+ * Must be used AFTER requireAuth in the middleware chain.
+ */
+export function requireBusiness(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user || (req.user.role !== Role.BUSINESS && req.user.role !== Role.ADMIN)) {
+    logger.warn('Non-business user attempted to access business route', {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      route: req.path,
+    });
+    res.status(403).json({ success: false, error: 'Business account required' });
+    return;
+  }
+
+  next();
+}
+
+/**
  * optionalAuth — attaches user if token present, but doesn't block if absent.
  * Used for routes that behave differently for logged-in vs anonymous users.
  */

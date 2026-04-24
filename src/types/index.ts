@@ -32,6 +32,7 @@ export interface RegisterBody {
   name: string;
   email: string;
   password: string;
+  role?: "USER" | "BUSINESS";
   cardId?: string; // Optional: user may activate a card at registration
 }
 

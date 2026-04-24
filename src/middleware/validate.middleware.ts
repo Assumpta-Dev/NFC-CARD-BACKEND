@@ -32,6 +32,7 @@ export const RegisterSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
   email: z.string().email("Invalid email format"),
   password: passwordSchema,
+  role: z.enum(["USER", "BUSINESS"]).optional().default("USER"),
   cardId: z.string().optional(), // Optional card ID for activation at signup
 });
 

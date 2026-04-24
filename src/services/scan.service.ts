@@ -150,15 +150,15 @@ export const ScanService = {
 
   async getActiveUserCount(rangeDays: number) {
     const startDate = getRangeStart(rangeDays);
-    return prisma.user.count({
-      where: {
-        cards: {
-          some: {
-            scans: { some: { timestamp: { gte: startDate } } },
-          },
-        },
-      },
-    });
+    const result = await prisma.$queryRawUnsafe<[{ count: bigint }]>(
+      `SELECT COUNT(DISTINCT u.id)::bigint as count
+       FROM users u
+       JOIN cards c ON c."userId" = u.id
+       JOIN scans s ON s."cardId" = c.id
+       WHERE s.timestamp >= $1`,
+      startDate
+    );
+    return Number(result[0].count);
   },
 
   async getActiveCardCount(rangeDays: number) {
@@ -213,36 +213,23 @@ export const ScanService = {
 
   async getTopUsers(rangeDays: number, limit: number) {
     const startDate = getRangeStart(rangeDays);
-    const scans = await prisma.scan.findMany({
-      where: { timestamp: { gte: startDate } },
-      select: { card: { select: { userId: true } } },
-    });
-
-    const totals = new Map<string, number>();
-    for (const scan of scans) {
-      const userId = scan.card.userId;
-      if (!userId) continue;
-      totals.set(userId, (totals.get(userId) || 0) + 1);
-    }
-
-    const sortedUsers = Array.from(totals.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, limit);
-
-    const users = await prisma.user.findMany({
-      where: { id: { in: sortedUsers.map(([userId]) => userId) } },
-      select: { id: true, name: true, email: true },
-    });
-
-    return sortedUsers.map(([userId, scanCount]) => {
-      const user = users.find((u) => u.id === userId);
-      return {
-        userId,
-        scans: scanCount,
-        name: user?.name ?? null,
-        email: user?.email ?? null,
-      };
-    });
+    const rows = await prisma.$queryRawUnsafe<{ userId: string; name: string; email: string; scanCount: bigint }[]>(
+      `SELECT u.id AS "userId", u.name, u.email, COUNT(s.id)::bigint AS "scanCount"
+       FROM users u
+       JOIN cards c ON c."userId" = u.id
+       JOIN scans s ON s."cardId" = c.id
+       WHERE s.timestamp >= $1
+       GROUP BY u.id
+       ORDER BY "scanCount" DESC
+       LIMIT $2`,
+      startDate, limit
+    );
+    return rows.map(r => ({
+      userId: r.userId,
+      name: r.name,
+      email: r.email,
+      scans: Number(r.scanCount),
+    }));
   },
 
   async getUserScanSummary(userId: string) {
