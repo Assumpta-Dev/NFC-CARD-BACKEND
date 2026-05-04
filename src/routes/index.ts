@@ -200,7 +200,9 @@ paymentRouter.post("/initiate", requireAuth, PaymentController.initiatePayment);
  *       400:
  *         description: Invalid payload
  */
-paymentRouter.post("/callback", PaymentController.handleCallback);
+// Webhook — no auth, Paypack calls this when payment status changes
+// Register this URL on Paypack dashboard: https://<your-backend-domain>/api/payments/webhook
+paymentRouter.post("/webhook", PaymentController.handleWebhook);
 
 /**
  * @swagger
@@ -668,6 +670,7 @@ paymentRouter.get("/my", requireAuth, PaymentController.getMyPayments);
  *       404:
  *         description: Payment not found
  */
+paymentRouter.get("/:id/status", requireAuth, PaymentController.checkStatus);
 paymentRouter.get("/:id", requireAuth, PaymentController.getPaymentById);
 
 /**

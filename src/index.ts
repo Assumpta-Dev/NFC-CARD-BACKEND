@@ -36,6 +36,7 @@ import { notFoundHandler } from "./middleware/error.middleware";
 import logger from "./utils/logger";
 import { paymentRouter, menuRouter, businessRouter } from "./routes";
 
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
