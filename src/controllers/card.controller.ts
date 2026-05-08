@@ -71,7 +71,10 @@ export const CardController = {
           data: {
             type: "business",
             cardId: c.cardId,
-            business: c.businessProfile,
+            business: {
+              id: c.businessProfile.id, // needed for placing orders
+              ...c.businessProfile,
+            },
           },
         });
         return;

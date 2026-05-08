@@ -27,10 +27,12 @@ model User {
   id        String   @id @default(cuid()) // cuid() gives collision-resistant IDs
   name      String
   email     String   @unique // Unique constraint prevents duplicate accounts
-  password  String // Stored as bcrypt hash — NEVER plaintext
-  role      Role     @default(USER) // Default role is USER; admins are set manually
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  password          String   // Stored as bcrypt hash — NEVER plaintext
+  role              Role     @default(USER) // Default role is USER; admins are set manually
+  resetToken        String?  // Hashed password reset token — null when not requested
+  resetTokenExpiry  DateTime? // Token expires after 1 hour for security
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
   cards           Card[] // One user can have multiple cards (future multi-card support)
@@ -121,6 +123,7 @@ model BusinessProfile {
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   menus Menu[] // Business can have multiple menus
   cards Card[] // Cards assigned to this business
+  orders Order[] // Orders placed by customers
 
   @@map("business_profiles")
 }
@@ -257,6 +260,38 @@ model Subscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ===========================================================
+// ORDER MODEL
+// Stores food orders placed by customers on business cards.
+// Flow: customer adds items → places order → pays via MoMo code
+//       → enters TxId → business verifies → confirms/rejects
+// ===========================================================
+model Order {
+  id            String      @id @default(cuid())
+  businessId    String      // Which business received this order
+  customerName  String      // Name entered by customer at checkout
+  phone         String      // Customer phone for MoMo payment
+  total         Float       // Total amount in RWF
+  status        OrderStatus @default(PENDING)
+  txId          String?     // MoMo transaction ID entered by customer after paying
+  items         Json        // Snapshot of ordered items [{name, price, qty}]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([status])
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING              // Order placed, waiting for customer to pay
+  WAITING_VERIFICATION // Customer submitted TxId, waiting for business to verify
+  PAID                 // Business confirmed payment
+  REJECTED             // Business rejected (wrong TxId or amount)
 }
 
 enum PaymentStatus {

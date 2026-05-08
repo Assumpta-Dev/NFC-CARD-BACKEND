@@ -10,11 +10,13 @@
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import { Card, CardStatus } from "@prisma/client";
 import { RegisterBody, LoginBody, JwtPayload } from "../types";
 import { AppError } from "../middleware/error.middleware";
 import logger from "../utils/logger";
 import prisma from "../lib/prisma";
+import { sendWelcomeEmail, sendPasswordResetEmail, sendPasswordRecoveredEmail } from "./email.service";
 
 // JWT configuration — token expires in 7 days for good UX
 // Short-lived access tokens (15min) + refresh tokens are ideal for high-security apps,
@@ -83,6 +85,11 @@ export const AuthService = {
 
     logger.info("New user registered", { userId: newUser.id, email: newUser.email });
 
+    // Send welcome email — fire and forget (don't block registration if email fails)
+    sendWelcomeEmail(newUser.email, newUser.name).catch((err) =>
+      logger.warn("Welcome email failed to send", { email: newUser.email, err: err.message }),
+    );
+
     const token = generateToken({ userId: newUser.id, email: newUser.email, role: newUser.role });
 
     return {
@@ -137,6 +144,72 @@ export const AuthService = {
         role: user.role,
       },
     };
+  },
+  /**
+   * Request a password reset link.
+   * Generates a secure token, stores its hash in DB, emails the raw token.
+   * Always responds with success to prevent email enumeration.
+   */
+  async forgotPassword(email: string) {
+    const userRows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, name, email FROM users WHERE email = $1 LIMIT 1`, email
+    );
+    const user = userRows[0];
+
+    // Always return success — don't reveal whether the email exists
+    if (!user) return;
+
+    // Generate a cryptographically secure random token
+    const rawToken = crypto.randomBytes(32).toString("hex");
+
+    // Store only the hash — raw token is only ever in the email link
+    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    await prisma.$queryRawUnsafe(
+      `UPDATE users SET "resetToken" = $1, "resetTokenExpiry" = $2, "updatedAt" = NOW() WHERE id = $3`,
+      hashedToken, expiry, user.id
+    );
+
+    // Send email with the raw token (not the hash)
+    await sendPasswordResetEmail(user.email, user.name, rawToken);
+
+    logger.info("Password reset requested", { userId: user.id });
+  },
+
+  /**
+   * Reset password using the token from the email link.
+   * Validates token hash + expiry, then updates the password.
+   */
+  async resetPassword(rawToken: string, newPassword: string) {
+    // Hash the incoming token to compare against what's stored in DB
+    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+    const userRows = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id, name, email, "resetTokenExpiry" FROM users
+       WHERE "resetToken" = $1 AND "resetTokenExpiry" > NOW() LIMIT 1`,
+      hashedToken
+    );
+    const user = userRows[0];
+
+    if (!user) {
+      throw new AppError(400, "Reset link is invalid or has expired");
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password and clear the reset token so it can't be reused
+    await prisma.$queryRawUnsafe(
+      `UPDATE users SET password = $1, "resetToken" = NULL, "resetTokenExpiry" = NULL, "updatedAt" = NOW() WHERE id = $2`,
+      hashedPassword, user.id
+    );
+
+    // Send confirmation email — fire and forget (don't block the response)
+    sendPasswordRecoveredEmail(user.email, user.name).catch((err) =>
+      logger.warn("Password recovered email failed to send", { email: user.email, err: err.message }),
+    );
+
+    logger.info("Password reset successful", { userId: user.id });
   },
 };
 

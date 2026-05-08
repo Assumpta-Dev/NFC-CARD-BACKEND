@@ -29,21 +29,39 @@ import {
   UpdateProfileSchema,
   CreateCardSchema,
   AssignCardSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
 } from "../middleware/validate.middleware";
 import { uploadPhoto } from "../middleware/upload.middleware";
 import { BusinessController } from "../controllers/business.controller";
 import { MenuController } from "../controllers/menu.controller";
 import { PaymentController } from "../controllers/payment.controller";
+import { OrderController } from "../controllers/order.controller";
 
 // ===========================================================
 // AUTH ROUTES — /api/auth
 // ===========================================================
 export const authRouter = Router();
 export const businessRouter = Router();
-
-
 export const menuRouter = Router();
 export const paymentRouter = Router();
+
+// ===========================================================
+// ORDER ROUTES — /api/orders
+// Public: place order, submit TxId, poll status
+// Protected: business views orders, confirms or rejects
+// ===========================================================
+export const orderRouter = Router();
+
+// Public — no auth needed (customer scanning a card)
+orderRouter.post("/", OrderController.placeOrder);
+orderRouter.post("/:id/txid", OrderController.submitTxId);
+orderRouter.get("/:id/status", OrderController.getOrderStatus);
+
+// Protected — business owner only
+orderRouter.get("/business", requireAuth, OrderController.getBusinessOrders);
+orderRouter.post("/:id/confirm", requireAuth, OrderController.confirmOrder);
+orderRouter.post("/:id/reject", requireAuth, OrderController.rejectOrder);
 
 /**
  * @swagger
@@ -702,6 +720,12 @@ paymentRouter.get("/:id", requireAuth, PaymentController.getPaymentById);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 authRouter.post("/register", validate(RegisterSchema), AuthController.register);
+
+// Forgot password — sends reset link to email (no auth required)
+authRouter.post("/forgot-password", validate(ForgotPasswordSchema), AuthController.forgotPassword);
+
+// Reset password — validates token from email link and sets new password
+authRouter.post("/reset-password", validate(ResetPasswordSchema), AuthController.resetPassword);
 
 /**
  * @swagger

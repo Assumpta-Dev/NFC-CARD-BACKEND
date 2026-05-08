@@ -59,4 +59,37 @@ export const AuthController = {
       data: { user: req.user },
     });
   },
+  /**
+   * POST /api/auth/forgot-password
+   * Sends a password reset email. Always returns 200 to prevent email enumeration.
+   */
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await AuthService.forgotPassword(req.body.email);
+      // Always return 200 — don't reveal if email exists in system
+      res.status(200).json({
+        success: true,
+        message: 'If that email is registered, a reset link has been sent.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * POST /api/auth/reset-password
+   * Resets the user's password using the token from the email link.
+   */
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, password } = req.body;
+      await AuthService.resetPassword(token, password);
+      res.status(200).json({
+        success: true,
+        message: 'Password reset successfully. You can now log in.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
 };

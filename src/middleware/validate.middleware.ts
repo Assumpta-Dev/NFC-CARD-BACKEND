@@ -68,6 +68,15 @@ export const UpdateProfileSchema = z.object({
     .optional(),
 });
 
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email format"),
+});
+
+export const ResetPasswordSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+  password: passwordSchema,
+});
+
 // Admin schema for creating new physical cards in batch
 export const CreateCardSchema = z.object({
   count: z.number().int().min(1).max(100).optional().default(1),

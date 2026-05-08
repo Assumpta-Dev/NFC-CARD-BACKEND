@@ -34,7 +34,7 @@ import {
 import { errorHandler } from "./middleware/error.middleware";
 import { notFoundHandler } from "./middleware/error.middleware";
 import logger from "./utils/logger";
-import { paymentRouter, menuRouter, businessRouter } from "./routes";
+import { paymentRouter, menuRouter, businessRouter, orderRouter } from "./routes";
 
 
 const app = express();
@@ -160,6 +160,7 @@ app.use("/api/c", publicCardRouter);
 app.use("/api/business", businessRouter);
 app.use("/api/menu", menuRouter);
 app.use("/api/payments", paymentRouter);
+app.use("/api/orders", orderRouter);
 
 // ===========================================================
 // ERROR HANDLERS
