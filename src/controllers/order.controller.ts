@@ -159,6 +159,56 @@ export const OrderController = {
   },
 
   // ===========================================================
+  // GET /api/orders/business/export
+  // PROTECTED — business owner downloads all orders as CSV
+  // ===========================================================
+  async exportOrdersCsv(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.userId;
+
+      const business = await prisma.businessProfile.findUnique({
+        where: { userId },
+        select: { id: true, name: true },
+      });
+
+      if (!business) {
+        res.status(404).json({ success: false, message: "Business profile not found" });
+        return;
+      }
+
+      const orders = await prisma.order.findMany({
+        where: { businessId: business.id },
+        orderBy: { createdAt: "desc" },
+      });
+
+      const rows = [
+        ["Order ID", "Customer", "Phone", "Items", "Total (RWF)", "Status", "TxId", "Date"].join(","),
+        ...orders.map((o) => {
+          const items = (o.items as any[])
+            .map((i: any) => `${i.name} x${i.qty}`)
+            .join(" | ");
+          return [
+            o.id.slice(-8).toUpperCase(),
+            `"${o.customerName.replace(/"/g, '""')}"`,
+            o.phone,
+            `"${items.replace(/"/g, '""')}"`,
+            o.total,
+            o.status,
+            o.txId ?? "",
+            new Date(o.createdAt).toLocaleString(),
+          ].join(",");
+        }),
+      ].join("\n");
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="orders-${business.name.replace(/\s+/g, "-")}.csv"`);
+      res.status(200).send(rows);
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ===========================================================
   // POST /api/orders/:id/confirm
   // PROTECTED — business owner confirms payment after verifying TxId
   // ===========================================================

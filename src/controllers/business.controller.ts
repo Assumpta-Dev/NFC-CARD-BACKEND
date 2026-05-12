@@ -11,7 +11,7 @@ export const BusinessController = {
   async upsertBusinessProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const { name, description, location, phone, category, email, website } = req.body;
+      const { name, description, location, phone, category, email, website, paymentCode } = req.body;
       let imageUrl = req.body.imageUrl; // allow fallback to URL if provided instead of file
 
       // If a file was uploaded, stream it to Cloudinary
@@ -44,7 +44,8 @@ export const BusinessController = {
           category,
           email,
           website,
-          ...(imageUrl && { imageUrl }), // only update if image provided
+          paymentCode: paymentCode ?? null,
+          ...(imageUrl && { imageUrl }),
         },
         create: {
           userId,
@@ -55,6 +56,7 @@ export const BusinessController = {
           category,
           email,
           website,
+          paymentCode: paymentCode ?? null,
           imageUrl,
         },
       });

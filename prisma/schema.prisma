@@ -116,6 +116,7 @@ model BusinessProfile {
   email       String?
   website     String?
   imageUrl    String?
+  paymentCode String?  // MTN MoMo payment code (e.g. merchant code) for USSD payment
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

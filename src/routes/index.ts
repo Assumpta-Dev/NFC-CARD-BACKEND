@@ -60,6 +60,7 @@ orderRouter.get("/:id/status", OrderController.getOrderStatus);
 
 // Protected — business owner only
 orderRouter.get("/business", requireAuth, OrderController.getBusinessOrders);
+orderRouter.get("/business/export", requireAuth, OrderController.exportOrdersCsv);
 orderRouter.post("/:id/confirm", requireAuth, OrderController.confirmOrder);
 orderRouter.post("/:id/reject", requireAuth, OrderController.rejectOrder);
 
