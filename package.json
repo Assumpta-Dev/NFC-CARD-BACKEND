@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "nfc-card-backend",
   "version": "1.0.0",
   "description": "Digital NFC Business Card System - REST API",
