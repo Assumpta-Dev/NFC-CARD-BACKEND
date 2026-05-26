@@ -17,6 +17,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
@@ -39,6 +40,11 @@ import { paymentRouter, menuRouter, businessRouter, orderRouter } from "./routes
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ===========================================================
+// COMPRESSION — gzip all responses for faster transfer
+// ===========================================================
+app.use(compression());
 
 // ===========================================================
 // SECURITY MIDDLEWARE
@@ -96,14 +102,15 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ===========================================================
-// REQUEST LOGGING
+// REQUEST LOGGING — only in development
 // ===========================================================
-app.use(
-  morgan("combined", {
-    stream: { write: (message) => logger.http(message.trim()) },
-    skip: (req) => req.path === "/health",
-  }),
-);
+if (process.env.NODE_ENV !== "production") {
+  app.use(
+    morgan("dev", {
+      skip: (req) => req.path === "/health",
+    }),
+  );
+}
 
 // ===========================================================
 // API DOCS

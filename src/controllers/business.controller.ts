@@ -3,6 +3,29 @@ import prisma from "../lib/prisma";
 import cloudinary from "../lib/cloudinary";
 import { AppError } from "../middleware/error.middleware";
 
+function normalizeRequiredString(value: unknown, fieldName: string) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new AppError(400, `${fieldName} is required`);
+  }
+
+  return value.trim();
+}
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value !== "string") return null;
+
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+function readOptionalField(body: Request["body"], key: string) {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) {
+    return undefined;
+  }
+
+  return normalizeOptionalString(body[key]);
+}
+
 export const BusinessController = {
   /**
    * POST /api/business
@@ -11,8 +34,15 @@ export const BusinessController = {
   async upsertBusinessProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
-      const { name, description, location, phone, category, email, website, paymentCode } = req.body;
-      let imageUrl = req.body.imageUrl; // allow fallback to URL if provided instead of file
+      const name = normalizeRequiredString(req.body.name, "Business name");
+      const category = normalizeRequiredString(req.body.category, "Category");
+      const description = readOptionalField(req.body, "description");
+      const location = readOptionalField(req.body, "location");
+      const phone = readOptionalField(req.body, "phone");
+      const email = readOptionalField(req.body, "email");
+      const website = readOptionalField(req.body, "website");
+      const paymentCode = readOptionalField(req.body, "paymentCode");
+      let imageUrl = readOptionalField(req.body, "imageUrl");
 
       // If a file was uploaded, stream it to Cloudinary
       if (req.file) {
@@ -34,19 +64,21 @@ export const BusinessController = {
         });
       }
 
+      const updateData = {
+        name,
+        description,
+        location,
+        phone,
+        category,
+        email,
+        website,
+        paymentCode,
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
+      };
+
       const business = await prisma.businessProfile.upsert({
         where: { userId },
-        update: {
-          name,
-          description,
-          location,
-          phone,
-          category,
-          email,
-          website,
-          paymentCode: paymentCode ?? null,
-          ...(imageUrl && { imageUrl }),
-        },
+        update: updateData,
         create: {
           userId,
           name,
@@ -56,8 +88,8 @@ export const BusinessController = {
           category,
           email,
           website,
-          paymentCode: paymentCode ?? null,
-          imageUrl,
+          paymentCode,
+          imageUrl: imageUrl ?? null,
         },
       });
 

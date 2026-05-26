@@ -48,6 +48,26 @@ async function ensureProfileExists(userId: string) {
   });
 }
 
+function buildBusinessProfileSyncData(data: Partial<UpdateProfileBody>) {
+  const businessData: Record<string, any> = {};
+
+  // Business cards render a separate model, so keep overlapping display fields in sync.
+  if (data.fullName !== undefined) businessData.name = data.fullName;
+  if (data.jobTitle !== undefined && data.jobTitle !== null) {
+    businessData.category = data.jobTitle;
+  }
+  if (data.company !== undefined) businessData.location = data.company;
+  if (data.phone !== undefined) businessData.phone = data.phone;
+  if (data.email !== undefined) businessData.email = data.email;
+  if (data.website !== undefined) businessData.website = data.website;
+  if (data.bio !== undefined) businessData.description = data.bio;
+  if (data.imageUrl !== undefined && data.imageUrl !== null) {
+    businessData.imageUrl = data.imageUrl;
+  }
+
+  return businessData;
+}
+
 export const ProfileService = {
   /**
    * Upload a profile photo to Cloudinary and save the returned URL.
@@ -81,8 +101,15 @@ export const ProfileService = {
       stream.end(buffer);
     });
 
-    // Save the Cloudinary URL back to the profile
+    // Save the Cloudinary URL to the personal profile
     await prisma.profile.update({
+      where: { userId },
+      data: { imageUrl },
+    });
+
+    // Also update business profile if this user has one
+    // so the card public view shows the image for business cards too
+    await prisma.businessProfile.updateMany({
       where: { userId },
       data: { imageUrl },
     });
@@ -183,21 +210,59 @@ export const ProfileService = {
           };
         }
 
-        return prisma.profile.create({
+        const createdProfile = await prisma.profile.create({
           data: createData,
           include: { links: { orderBy: { order: "asc" } } },
         });
+
+        const businessSyncData = buildBusinessProfileSyncData({
+          fullName: createData.fullName,
+          jobTitle: createData.jobTitle,
+          company: createData.company,
+          phone: createData.phone,
+          email: createData.email,
+          website: createData.website,
+          bio: createData.bio,
+          imageUrl: createData.imageUrl,
+        });
+
+        if (Object.keys(businessSyncData).length > 0) {
+          await prisma.businessProfile.updateMany({
+            where: { userId },
+            data: businessSyncData,
+          });
+        }
+
+        return createdProfile;
       }
 
       // Step 2-4: Update profile + links in atomic transaction
       const updatedProfile = await prisma.$transaction(
         async (tx) => {
-          // Update scalar profile fields
+          // Build update data: include all defined fields.
+          // Skip imageUrl if null to never erase an uploaded photo.
+          const updateData: Record<string, any> = Object.fromEntries(
+            Object.entries(profileData).filter(([key, value]) => {
+              if (value === undefined) return false;
+              if (key === "imageUrl" && value === null) return false;
+              return true;
+            })
+          );
+
           const updated = await tx.profile.update({
             where: { id: existingProfile.id },
-            data: profileData,
-            select: { id: true }, // Just get ID to confirm success
+            data: updateData,
+            select: { id: true },
           });
+
+          const businessSyncData = buildBusinessProfileSyncData(profileData);
+
+          if (Object.keys(businessSyncData).length > 0) {
+            await tx.businessProfile.updateMany({
+              where: { userId },
+              data: businessSyncData,
+            });
+          }
 
           // If links provided, replace them entirely
           if (links !== undefined && Array.isArray(links)) {

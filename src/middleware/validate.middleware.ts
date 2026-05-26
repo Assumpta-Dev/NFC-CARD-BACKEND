@@ -41,30 +41,32 @@ export const LoginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+// Accept any string or null, transform empty string to null
+const optionalString = (maxLen?: number) =>
+  z.union([z.string().max(maxLen ?? 500), z.null(), z.undefined()])
+    .transform(v => (v === undefined || v === null || (typeof v === "string" && v.trim() === "")) ? null : (v as string).trim());
+
 export const UpdateProfileSchema = z.object({
-  fullName: z.string().min(2).max(100).optional(),
-  jobTitle: z.string().max(100).optional().nullable(),
-  company: z.string().max(100).optional().nullable(),
-  phone: z.string().max(30).optional().nullable(),
-  email: z.string().email().optional().nullable(),
-  website: z.string().url("Invalid URL format").optional().nullable(),
-  bio: z.string().max(500).optional().nullable(),
-  imageUrl: z.string().url().optional().nullable(),
-  whatsapp: z
-    .string()
-    .regex(/^\d+$/, "WhatsApp number must contain only digits")
-    .optional()
-    .nullable(),
+  fullName:  z.string().min(1).max(100).optional(),
+  jobTitle:  optionalString(100),
+  company:   optionalString(100),
+  phone:     optionalString(30),
+  email:     optionalString(200),
+  website:   optionalString(500),
+  bio:       optionalString(500),
+  imageUrl:  optionalString(1000),
+  whatsapp:  z.union([z.string().regex(/^\d*$/, "WhatsApp must be digits only").max(20), z.null(), z.undefined()])
+               .transform(v => (!v || v.trim() === "") ? null : v.trim()),
   links: z
     .array(
       z.object({
-        type: z.string().min(1).max(50),
+        type:  z.string().min(1).max(50),
         label: z.string().min(1).max(100),
-        url: z.string().url("Each link must be a valid URL"),
+        url:   z.string().url("Each link must be a valid URL"),
         order: z.number().int().min(0).optional(),
       }),
     )
-    .max(10, "Maximum 10 links allowed") // Prevent abuse — too many links breaks UI
+    .max(10)
     .optional(),
 });
 
