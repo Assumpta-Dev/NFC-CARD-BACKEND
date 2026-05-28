@@ -55,14 +55,17 @@ export const orderRouter = Router();
 
 // Public — no auth needed (customer scanning a card)
 orderRouter.post("/", OrderController.placeOrder);
-orderRouter.post("/:id/txid", OrderController.submitTxId);
-orderRouter.get("/:id/status", OrderController.getOrderStatus);
 
-// Protected — business owner only
+// Protected — specific/static routes MUST come before parameterized routes
 orderRouter.get("/business", requireAuth, OrderController.getBusinessOrders);
 orderRouter.get("/business/export", requireAuth, OrderController.exportOrdersCsv);
+
+// Parameterized routes last to avoid swallowing static paths
+orderRouter.post("/:id/txid", OrderController.submitTxId);
+orderRouter.get("/:id/status", OrderController.getOrderStatus);
 orderRouter.post("/:id/confirm", requireAuth, OrderController.confirmOrder);
 orderRouter.post("/:id/reject", requireAuth, OrderController.rejectOrder);
+orderRouter.delete("/:id", requireAuth, OrderController.deleteOrder);
 
 /**
  * @swagger

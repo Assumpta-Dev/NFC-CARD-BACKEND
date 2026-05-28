@@ -209,6 +209,43 @@ export const OrderController = {
   },
 
   // ===========================================================
+  // DELETE /api/orders/:id
+  // PROTECTED — business owner deletes a completed or rejected order
+  // Only PAID or REJECTED orders can be deleted (not active ones)
+  // ===========================================================
+  async deleteOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.userId;
+      const { id } = req.params;
+
+      const order = await prisma.order.findUnique({
+        where: { id },
+        include: { business: { select: { userId: true } } },
+      });
+
+      if (!order) {
+        res.status(404).json({ success: false, message: "Order not found" });
+        return;
+      }
+
+      if (order.business.userId !== userId) {
+        res.status(403).json({ success: false, message: "Access denied" });
+        return;
+      }
+
+      if (order.status !== "PAID" && order.status !== "REJECTED") {
+        res.status(400).json({ success: false, message: "Only completed or rejected orders can be deleted" });
+        return;
+      }
+
+      await prisma.order.delete({ where: { id } });
+      res.status(200).json({ success: true, message: "Order deleted" });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ===========================================================
   // POST /api/orders/:id/confirm
   // PROTECTED — business owner confirms payment after verifying TxId
   // ===========================================================
