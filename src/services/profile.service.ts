@@ -83,14 +83,13 @@ export const ProfileService = {
     await ensureProfileExists(userId);
 
     const imageUrl = await new Promise<string>((resolve, reject) => {
-      // Use upload_stream to pipe the memory buffer directly to Cloudinary
       const stream = cloudinary.uploader.upload_stream(
         {
           folder: "nfc-cards/profiles",
-          public_id: `user_${userId}`, // Keyed by userId so re-upload overwrites old photo
+          public_id: `user_${userId}`,
           overwrite: true,
           resource_type: "image",
-          format: mimetype.split("/")[1], // Preserve original format (jpeg/png/webp)
+          format: mimetype.split("/")[1],
         },
         (error, result) => {
           if (error || !result)
@@ -101,20 +100,50 @@ export const ProfileService = {
       stream.end(buffer);
     });
 
-    // Save the Cloudinary URL to the personal profile
     await prisma.profile.update({
       where: { userId },
       data: { imageUrl },
     });
 
-    // Also update business profile if this user has one
-    // so the card public view shows the image for business cards too
     await prisma.businessProfile.updateMany({
       where: { userId },
       data: { imageUrl },
     });
 
     return imageUrl;
+  },
+
+  async uploadCoverPhoto(
+    userId: string,
+    buffer: Buffer,
+    mimetype: string,
+  ): Promise<string> {
+    await ensureProfileExists(userId);
+
+    const coverImageUrl = await new Promise<string>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: "nfc-cards/covers",
+          public_id: `cover_${userId}`,
+          overwrite: true,
+          resource_type: "image",
+          format: mimetype.split("/")[1],
+        },
+        (error, result) => {
+          if (error || !result)
+            return reject(new AppError(500, "Cover photo upload failed"));
+          resolve(result.secure_url);
+        },
+      );
+      stream.end(buffer);
+    });
+
+    await prisma.profile.update({
+      where: { userId },
+      data: { coverImageUrl },
+    });
+
+    return coverImageUrl;
   },
 
   /**
@@ -375,6 +404,7 @@ export const ProfileService = {
       website: profile.website,
       bio: profile.bio,
       imageUrl: profile.imageUrl,
+      coverImageUrl: profile.coverImageUrl,
       whatsapp: profile.whatsapp,
       links: profile.links.map((l) => ({
         type: l.type,

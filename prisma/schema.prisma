@@ -89,6 +89,7 @@ model Profile {
   website   String?
   bio       String?
   imageUrl  String? // URL to profile photo (CDN or object storage)
+  coverImageUrl String? // URL to cover/banner photo shown behind profile
   whatsapp  String? // WhatsApp number for direct chat link
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

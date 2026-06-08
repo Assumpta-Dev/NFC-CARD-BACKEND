@@ -66,14 +66,33 @@ export const CardController = {
       // businessProfile is already loaded in the query — zero extra DB calls
       // ----------------------------------------
       if (c.businessProfileId && c.businessProfile) {
+        const bp = c.businessProfile;
+        const ownerProfile = bp.user?.profile;
         res.status(200).json({
           success: true,
           data: {
             type: "business",
             cardId: c.cardId,
             business: {
-              id: c.businessProfile.id, // needed for placing orders
-              ...c.businessProfile,
+              id: bp.id,
+              name: bp.name,
+              category: bp.category,
+              description: bp.description ?? null,
+              location: bp.location ?? null,
+              phone: bp.phone ?? null,
+              email: bp.email ?? null,
+              website: bp.website ?? null,
+              imageUrl: bp.imageUrl ?? null,
+              paymentCode: bp.paymentCode ?? null,
+              menus: bp.menus ?? [],
+              whatsapp: ownerProfile?.whatsapp ?? null,
+              links: (ownerProfile?.links ?? []).map((l: any) => ({
+                id: l.id,
+                type: l.type?.toLowerCase() ?? 'custom',
+                label: l.label,
+                url: l.url,
+                order: l.order,
+              })),
             },
           },
         });
@@ -110,8 +129,15 @@ export const CardController = {
           website: profileData.website,
           bio: profileData.bio,
           imageUrl: profileData.imageUrl,
+          coverImageUrl: profileData.coverImageUrl ?? null,
           whatsapp: profileData.whatsapp,
-          links: profileData.links,
+          links: (profileData.links ?? []).map((l: any) => ({
+            id: l.id,
+            type: l.type?.toLowerCase() ?? 'custom',
+            label: l.label,
+            url: l.url,
+            order: l.order,
+          })),
         };
 
         res.status(200).json({

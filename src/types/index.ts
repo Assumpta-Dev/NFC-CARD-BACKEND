@@ -109,6 +109,7 @@ export interface PublicProfile {
   website: string | null;
   bio: string | null;
   imageUrl: string | null;
+  coverImageUrl: string | null;
   whatsapp: string | null;
   links: PublicLink[];
 }

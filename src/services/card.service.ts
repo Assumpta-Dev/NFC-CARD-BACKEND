@@ -58,6 +58,15 @@ export const CardService = {
               },
               orderBy: { createdAt: 'asc' },
             },
+            user: {
+              include: {
+                profile: {
+                  include: {
+                    links: { orderBy: { order: 'asc' } },
+                  },
+                },
+              },
+            },
           },
         },
       },

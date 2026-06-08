@@ -27,20 +27,27 @@ export const ProfileController = {
    */
   async uploadPhoto(req: Request, res: Response, next: NextFunction) {
     try {
-      // multer attaches the file to req.file after upload.middleware runs
       if (!req.file) throw new AppError(400, "No photo file provided");
-
       const imageUrl = await ProfileService.uploadPhoto(
         req.user!.userId,
         req.file.buffer,
         req.file.mimetype,
       );
+      res.status(200).json({ success: true, data: { imageUrl } });
+    } catch (error) {
+      next(error);
+    }
+  },
 
-      res.status(200).json({
-        success: true,
-        data: { imageUrl },
-        message: "Profile photo uploaded successfully",
-      });
+  async uploadCoverPhoto(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) throw new AppError(400, "No photo file provided");
+      const coverImageUrl = await ProfileService.uploadCoverPhoto(
+        req.user!.userId,
+        req.file.buffer,
+        req.file.mimetype,
+      );
+      res.status(200).json({ success: true, data: { coverImageUrl } });
     } catch (error) {
       next(error);
     }

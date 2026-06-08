@@ -893,6 +893,7 @@ profileRouter.use(requireAuth);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 profileRouter.post("/photo", uploadPhoto, ProfileController.uploadPhoto);
+profileRouter.post("/cover", uploadPhoto, ProfileController.uploadCoverPhoto);
 
 /**
  * @swagger
