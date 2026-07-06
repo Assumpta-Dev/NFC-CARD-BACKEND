@@ -1,14 +1,4 @@
-// ===========================================================
-// PRISMA SCHEMA - Digital NFC Business Card System
-// ===========================================================
-// Prisma is used as the ORM because it provides:
-//   - Type-safe database access (auto-generated TypeScript types)
-//   - Migration management with version history
-//   - Clean query API that prevents SQL injection by default
-// ===========================================================
 
-// PostgreSQL is chosen for ACID compliance, strong relational
-// integrity, and support for JSON fields (future flexibility)
 
 datasource db {
   provider = "postgresql"
@@ -17,70 +7,50 @@ datasource db {
 generator client {
   provider = "prisma-client-js"
 }
-
-// ===========================================================
-// USER MODEL
-// Stores all users: card owners and administrators
-// role field distinguishes USER from ADMIN for authorization
-// ===========================================================
 model User {
-  id        String   @id @default(cuid()) // cuid() gives collision-resistant IDs
+  id        String   @id @default(cuid()) 
   name      String
-  email     String   @unique // Unique constraint prevents duplicate accounts
-  password          String   // Stored as bcrypt hash — NEVER plaintext
-  role              Role     @default(USER) // Default role is USER; admins are set manually
-  resetToken        String?  // Hashed password reset token — null when not requested
-  resetTokenExpiry  DateTime? // Token expires after 1 hour for security
+  email     String   @unique 
+  password          String 
+  role              Role     @default(USER) 
+  resetToken        String? 
+  resetTokenExpiry  DateTime? 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   // Relations
-  cards           Card[] // One user can have multiple cards (future multi-card support)
-  profile         Profile? // One-to-one optional profile (created on card activation)
-  businessProfile BusinessProfile? // ✅ ADD THIS
-  payments        Payment[] // ✅ ADD THIS
+  cards           Card[] 
+  profile         Profile? 
+  businessProfile BusinessProfile?
+  payments        Payment[] 
   subscriptions   Subscription[]
 
-  @@map("users") // Maps to lowercase plural table name in Postgres
+  @@map("users")
 }
 
-// ===========================================================
-// CARD MODEL
-// Represents the physical NFC/QR card entity
-// Each card has a lifecycle: unassigned → assigned → active
-// ===========================================================
 model Card {
   id String @id @default(cuid())
 
-  cardId            String     @unique // The human-readable unique identifier (e.g. CARD_8F3K2L)
-  // This is embedded in the QR/NFC URL
-  status            CardStatus @default(UNASSIGNED) // Tracks the card's lifecycle state
-  userId            String? // Nullable — null until user claims the card
-  businessProfileId String? // Nullable — set when card belongs to a business
+  cardId            String     @unique
+  status            CardStatus @default(UNASSIGNED) 
+  userId            String? 
+  businessProfileId String?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
   // Relations
   user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   businessProfile BusinessProfile? @relation(fields: [businessProfileId], references: [id], onDelete: SetNull)
-  scans           Scan[] // One card accumulates many scan events over its lifetime
+  scans           Scan[] 
 
-  // Index on cardId because every NFC/QR tap does a lookup by cardId
-  // Without this index, every scan would do a full table scan — unacceptable at scale
   @@index([cardId])
-  @@index([userId]) // For quickly fetching "all cards belonging to a user"
-  @@index([businessProfileId]) // For quickly fetching business cards
+  @@index([userId]) 
+  @@index([businessProfileId]) 
   @@map("cards")
 }
-
-// ===========================================================
-// PROFILE MODEL
-// The digital business card content shown to viewers
-// Separated from User so it can be edited independently
-// ===========================================================
 model Profile {
   id        String   @id @default(cuid())
-  userId    String   @unique // One profile per user
+  userId    String   @unique 
   fullName  String
   jobTitle  String?
   company   String?
@@ -88,70 +58,55 @@ model Profile {
   email     String?
   website   String?
   bio       String?
-  imageUrl  String? // URL to profile photo (CDN or object storage)
-  coverImageUrl String? // URL to cover/banner photo shown behind profile
-  whatsapp  String? // WhatsApp number for direct chat link
+  imageUrl  String? 
+  coverImageUrl String? 
+  whatsapp  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  links Link[] // Dynamic social/external links (Instagram, LinkedIn, etc.)
+  links Link[] 
 
   @@map("profiles")
 }
-
-// ===========================================================
-// BUSINESS PROFILE MODEL
-// Stores restaurant / hotel / business-specific data
-// Separate from Profile to avoid mixing personal + business logic
-// ===========================================================
 model BusinessProfile {
-  id          String   @id @default(cuid())
-  userId      String   @unique // One business per user account
-  name        String // Business name
-  category    String // "restaurant", "hotel", etc.
+  id          String       @id @default(cuid())
+  userId      String       @unique
+  name        String 
+  businessType BusinessType @default(RESTAURANT)
+  category    String 
   description String?
   location    String?
   phone       String?
   email       String?
   website     String?
   imageUrl    String?
-  paymentCode String?  // MTN MoMo payment code (e.g. merchant code) for USSD payment
+  paymentCode String?  
+  settings    Json?    
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
+
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  menus Menu[] // Business can have multiple menus
-  cards Card[] // Cards assigned to this business
-  orders Order[] // Orders placed by customers
+  menus Menu[] 
+  cards Card[] 
+  orders Order[]
 
   @@map("business_profiles")
 }
 
-// ===========================================================
-// MENU MODEL
-// Represents a collection of menu items (e.g. Breakfast, Drinks)
-// ===========================================================
 model Menu {
   id         String   @id @default(cuid())
   businessId String
   title      String
   createdAt  DateTime @default(now())
 
-  // Relations
   business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
   items    MenuItem[]
 
   @@index([businessId])
   @@map("menus")
 }
-
-// ===========================================================
-// MENU ITEM MODEL
-// Individual food/service items in a menu
-// ===========================================================
 model MenuItem {
   id          String   @id @default(cuid())
   menuId      String
@@ -161,66 +116,44 @@ model MenuItem {
   description String?
   createdAt   DateTime @default(now())
 
-  // Relations
+
   menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
   @@index([menuId])
   @@map("menu_items")
 }
-
-// ===========================================================
-// LINK MODEL
-// Stores flexible social/external links for a profile
-// Stored separately (not as JSON array) so they can be
-// queried, ordered, and typed individually
-// ===========================================================
 model Link {
   id        String @id @default(cuid())
   profileId String
-  type      String // e.g. "instagram", "linkedin", "twitter", "custom"
-  label     String // Display label shown on the card
-  url       String // The actual URL
-  order     Int    @default(0) // Controls display order on the digital card
+  type      String 
+  label     String 
+  url       String 
+  order     Int    @default(0) 
 
-  // Relation
+
   profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  @@index([profileId]) // Fast lookup of all links for a given profile
+  @@index([profileId])
   @@map("links")
 }
-
-// ===========================================================
-// SCAN MODEL
-// Records every interaction (tap/scan) with a card
-// This is the analytics data source for the user dashboard
-// Immutable by design — scans are never updated, only created
-// ===========================================================
 model Scan {
   id        String   @id @default(cuid())
-  cardId    String // References Card.cardId (the public ID), not Card.id
+  cardId    String 
   timestamp DateTime @default(now())
-  device    String? // "mobile" or "desktop" — derived from User-Agent
-  ip        String? // Approximate location source (optional, privacy-sensitive)
-  userAgent String? // Full User-Agent string for device detection
+  device    String? 
+  ip        String? 
+  userAgent String? 
 
-  // Relation — uses card's internal id for FK integrity
   card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
 
-  // Index on cardId + timestamp for efficient analytics queries like
-  // "all scans for this card in the last 7 days" (ORDER BY timestamp DESC)
   @@index([cardId, timestamp])
   @@map("scans")
 }
-
-// ===========================================================
-// PAYMENT MODEL
-// Stores transactions for subscriptions or card activation
-// ===========================================================
 model Payment {
   id     String @id @default(cuid())
   userId String
 
-  // 💳 subscription context (MISSING IN YOUR MODEL)
+
   plan         PlanType
   billingCycle BillingCycle
 
@@ -250,9 +183,9 @@ model Payment {
 model Subscription {
   id            String   @id @default(cuid())
   userId        String
-  plan          PlanType            // ✅ uses enum
-  billingCycle  BillingCycle        // ✅ uses enum
-  status        SubscriptionStatus  // ✅ uses enum
+  plan          PlanType         
+  billingCycle  BillingCycle       
+  status        SubscriptionStatus  
   startDate     DateTime
   endDate       DateTime
 
@@ -263,30 +196,39 @@ model Subscription {
 
   @@index([userId])
 }
-
-// ===========================================================
-// ORDER MODEL
-// Stores food orders placed by customers on business cards.
-// Flow: customer adds items → places order → pays via MoMo code
-//       → enters TxId → business verifies → confirms/rejects
-// ===========================================================
 model Order {
-  id            String      @id @default(cuid())
-  businessId    String      // Which business received this order
-  customerName  String      // Name entered by customer at checkout
-  phone         String      // Customer phone for MoMo payment
-  total         Float       // Total amount in RWF
-  status        OrderStatus @default(PENDING)
-  txId          String?     // MoMo transaction ID entered by customer after paying
-  items         Json        // Snapshot of ordered items [{name, price, qty}]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id            String       @id @default(cuid())
+  businessId    String
+  customerName  String
+  phone         String
+  orderContext  OrderContext @default(TABLE)
+  tableNumber   String?
+  roomNumber    String?
+  total         Float
+  status        OrderStatus  @default(PENDING)
+  txId          String?
+  items         Json
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([businessId])
   @@index([status])
   @@map("orders")
+}
+
+enum OrderContext {
+  TABLE
+  ROOM
+}
+
+enum BusinessType {
+  RESTAURANT
+  HOTEL
+  MOTEL
+  CAFE
+  OTHER
 }
 
 enum OrderStatus {
@@ -329,11 +271,6 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
-// ===========================================================
-// ENUMS
-// Using enums instead of raw strings prevents invalid states
-// and is self-documenting at the schema level
-// ===========================================================
 enum Role {
   USER
   ADMIN

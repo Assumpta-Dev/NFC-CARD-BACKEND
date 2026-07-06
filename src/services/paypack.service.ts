@@ -1,21 +1,4 @@
-// ===========================================================
-// PAYPACK SERVICE
-// ===========================================================
-// Handles all communication with the Paypack API (paypack.rw).
-// Paypack is a Rwanda payment gateway that supports MTN MoMo
-// and Airtel Money — users get a push prompt on their phone.
-//
-// Flow:
-//   1. getAccessToken() — exchanges APP_ID + APP_SECRET for a token
-//   2. cashin()         — sends payment request to customer's phone
-//   3. getTransaction() — checks if customer approved or rejected
-//
-// Webhook (passive):
-//   Paypack calls POST /api/payments/webhook automatically
-//   when a transaction status changes — no polling needed.
-//
-// Docs: https://paypack.rw/docs
-// ===========================================================
+
 
 import https from "https";
 import { randomUUID } from "crypto";
@@ -24,13 +7,9 @@ const PAYPACK_BASE_URL = "https://payments.paypack.rw/api";
 const APP_ID = process.env.PAYPACK_APP_ID!;
 const APP_SECRET = process.env.PAYPACK_APP_SECRET!;
 
-// Token cache — reuse token until it expires (avoid re-authenticating every request)
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
 
-// ===========================================================
-// HTTP HELPER
-// ===========================================================
 async function fetchJson<T>(
   url: string,
   options: { method: string; headers: Record<string, string>; body?: string },
@@ -68,14 +47,9 @@ async function fetchJson<T>(
   });
 }
 
-// ===========================================================
-// AUTHENTICATION
-// ===========================================================
-// Paypack tokens are valid for 24 hours — we cache and reuse them.
 async function getAccessToken(): Promise<string> {
   const now = Date.now();
 
-  // Return cached token if still valid (with 60s buffer)
   if (cachedToken && now < tokenExpiresAt - 60_000) {
     return cachedToken;
   }
@@ -94,27 +68,20 @@ async function getAccessToken(): Promise<string> {
   }
 
   cachedToken = (data as any).access;
-  tokenExpiresAt = now + 24 * 60 * 60 * 1000; // 24 hours
+  tokenExpiresAt = now + 24 * 60 * 60 * 1000;
 
   return cachedToken!;
 }
 
-// ===========================================================
-// CASHIN — Request payment from customer's phone
-// ===========================================================
-// Sends a USSD push to the customer's MTN/Airtel number.
-// They see a prompt on their phone and enter their PIN to pay.
-// Returns the Paypack transaction reference (used for status checks).
 export async function cashin(
   phone: string,
   amount: number,
 ): Promise<string> {
   const token = await getAccessToken();
 
-  // Normalize phone: strip leading 0, add Rwanda country code 250
   const normalizedPhone = phone.replace(/^0/, "250").replace(/\D/g, "");
 
-  const ref = randomUUID(); // unique reference for this transaction
+  const ref = randomUUID();
 
   const { status, data } = await fetchJson<{ ref: string }>(
     `${PAYPACK_BASE_URL}/transactions/cashin`,
@@ -123,7 +90,7 @@ export async function cashin(
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
-        "X-Idempotency-Key": ref, // prevents duplicate charges on retry
+        "X-Idempotency-Key": ref,
       },
       body: JSON.stringify({
         amount,
@@ -132,7 +99,6 @@ export async function cashin(
     },
   );
 
-  // 200 or 201 = request accepted and sent to phone
   if (status !== 200 && status !== 201) {
     throw new Error(`Paypack cashin failed (${status}): ${JSON.stringify(data)}`);
   }
@@ -140,11 +106,6 @@ export async function cashin(
   return (data as any).ref ?? ref;
 }
 
-// ===========================================================
-// GET TRANSACTION STATUS
-// ===========================================================
-// Used for manual polling if webhook hasn't fired yet.
-// Returns: "pending" | "successful" | "failed"
 export async function getTransaction(
   ref: string,
 ): Promise<{ status: string; amount: number; number: string }> {

@@ -1,46 +1,17 @@
-// ===========================================================
-// CARD CONTROLLER
-// ===========================================================
-// Handles all card-related HTTP operations.
-// The public card view route (GET /api/c/:cardId) is the
-// most critical — it's hit on every NFC tap / QR scan.
-// It must be fast (<2s) and requires NO authentication.
-//
-// Performance design:
-//   - card.service.getCardByPublicId does ONE query that preloads
-//     both businessProfile (menus+items) and user.profile (links)
-//   - ScanService.recordScan fires in background (non-blocking)
-//   - No second DB roundtrip needed for any card type
-// ===========================================================
 
 import { Request, Response, NextFunction } from 'express';
-import { CardService } from '../services/card.service';
-import { ScanService } from '../services/scan.service';
-import { generateVCard } from '../utils/vcard';
-import { AppError } from '../middleware/error.middleware';
+import { CardService } from '../../services/card.service';
+import { ScanService } from '../../services/scan.service';
+import { generateVCard } from '../../utils/vcard';
+import { AppError } from '../../middleware/error.middleware';
 
 export const CardController = {
-  /**
-   * GET /api/c/:cardId  (also mounted at /api/auth/:cardId for legacy)
-   * PUBLIC route — no authentication required.
-   * This is the endpoint hit every time someone taps/scans a card.
-   *
-   * Priority order:
-   *   1. UNASSIGNED card → activation message
-   *   2. Business card (businessProfileId set) → full menu
-   *   3. Personal card (userId set) → personal profile
-   */
   async getPublicCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;
 
-      // Single DB query — preloads businessProfile+menus and user.profile+links
       const card = await CardService.getCardByPublicId(cardId);
-      const c: any = card; // Bypass stale Prisma types during npm build
-
-      // ----------------------------------------
-      // CASE 1: Unassigned card (no owner of any kind)
-      // ----------------------------------------
+      const c: any = card;
       if (!c.userId && !c.businessProfileId) {
         res.status(200).json({
           success: true,
@@ -53,17 +24,13 @@ export const CardController = {
         return;
       }
 
-      // Record the scan in background — never blocks response
       ScanService.recordScan(
         c.id,
         req.headers["user-agent"],
         req.ip || req.socket.remoteAddress
-      ).catch(() => {}); // scan failure must NEVER break card view
+      ).catch(() => {});
 
       // ----------------------------------------
-      // CASE 2: Business card (NFC tap shows restaurant/hotel menu)
-      // businessProfileId links the card to the business
-      // businessProfile is already loaded in the query — zero extra DB calls
       // ----------------------------------------
       if (c.businessProfileId && c.businessProfile) {
         const bp = c.businessProfile;
@@ -76,6 +43,7 @@ export const CardController = {
             business: {
               id: bp.id,
               name: bp.name,
+              businessType: bp.businessType,
               category: bp.category,
               description: bp.description ?? null,
               location: bp.location ?? null,
@@ -84,6 +52,7 @@ export const CardController = {
               website: bp.website ?? null,
               imageUrl: bp.imageUrl ?? null,
               paymentCode: bp.paymentCode ?? null,
+              settings: bp.settings ?? null,
               menus: bp.menus ?? [],
               whatsapp: ownerProfile?.whatsapp ?? null,
               links: (ownerProfile?.links ?? []).map((l: any) => ({
@@ -100,8 +69,6 @@ export const CardController = {
       }
 
       // ----------------------------------------
-      // CASE 3: Personal card (NFC tap shows personal digital card)
-      // user.profile is already loaded in the query — zero extra DB calls
       // ----------------------------------------
       if (c.userId && c.user) {
         const profileData = c.user.profile;
@@ -119,7 +86,6 @@ export const CardController = {
           return;
         }
 
-        // Build safe public view — only expose public fields
         const profile = {
           fullName: profileData.fullName,
           jobTitle: profileData.jobTitle,
@@ -151,7 +117,6 @@ export const CardController = {
         return;
       }
 
-      // Fallback: card in unexpected state
       res.status(200).json({
         success: true,
         data: {
@@ -168,14 +133,12 @@ export const CardController = {
 
   /**
    * GET /api/c/:cardId/vcard
-   * PUBLIC route — downloads a .vcf file for "Add to Contacts"
-   * Only works for personal cards (business cards have no vCard concept)
    */
   async downloadVCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;
       const card = await CardService.getCardByPublicId(cardId);
-      const c: any = card; // Bypass stale Prisma types during npm build
+      const c: any = card;
 
       if (!c.userId || !c.user?.profile) {
         throw new AppError(404, 'No personal profile associated with this card');
@@ -183,7 +146,6 @@ export const CardController = {
 
       const profileData = c.user.profile;
 
-      // Build the public profile object that generateVCard expects
       const profile = {
         fullName: profileData.fullName,
         jobTitle: profileData.jobTitle,

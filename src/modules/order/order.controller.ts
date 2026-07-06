@@ -1,34 +1,46 @@
-// ===========================================================
-// ORDER CONTROLLER
-// ===========================================================
-// Handles food orders placed by customers on business cards.
-//
-// Public endpoints (no auth — customers scan a card):
-//   POST /api/orders              — place a new order
-//   POST /api/orders/:id/txid     — submit MoMo TxId after paying
-//   GET  /api/orders/:id/status   — poll order status (auto-refresh)
-//
-// Business endpoints (auth required — business owner):
-//   GET  /api/orders/business     — list all orders for my business
-//   POST /api/orders/:id/confirm  — confirm payment (mark as PAID)
-//   POST /api/orders/:id/reject   — reject order (wrong TxId/amount)
-// ===========================================================
-
 import { Request, Response, NextFunction } from "express";
-import prisma from "../lib/prisma";
+import prisma from "../../lib/prisma";
+import { parseOrderContext } from "../../constants/business";
 
 export const OrderController = {
-  // ===========================================================
-  // POST /api/orders
-  // PUBLIC — customer places an order from the business card page
-  // Body: { businessId, customerName, phone, items: [{id, name, price, qty, imageUrl}] }
-  // ===========================================================
   async placeOrder(req: Request, res: Response, next: NextFunction) {
     try {
-      const { businessId, customerName, phone, items } = req.body;
+      const {
+        businessId,
+        customerName,
+        phone,
+        items,
+        orderContext,
+        tableNumber,
+        roomNumber,
+      } = req.body;
 
       if (!businessId || !customerName?.trim() || !phone?.trim() || !items?.length) {
         res.status(400).json({ success: false, message: "businessId, customerName, phone and items are required" });
+        return;
+      }
+
+      let context;
+      try {
+        context = parseOrderContext(orderContext);
+      } catch (err) {
+        res.status(400).json({
+          success: false,
+          message: err instanceof Error ? err.message : "Invalid orderContext",
+        });
+        return;
+      }
+
+      const table = typeof tableNumber === "string" ? tableNumber.trim() : "";
+      const room = typeof roomNumber === "string" ? roomNumber.trim() : "";
+
+      if (context === "TABLE" && !table) {
+        res.status(400).json({ success: false, message: "tableNumber is required for table orders" });
+        return;
+      }
+
+      if (context === "ROOM" && !room) {
+        res.status(400).json({ success: false, message: "roomNumber is required for room orders" });
         return;
       }
 
@@ -43,6 +55,9 @@ export const OrderController = {
           businessId,
           customerName: customerName.trim(),
           phone: phone.trim(),
+          orderContext: context,
+          tableNumber: context === "TABLE" ? table : null,
+          roomNumber: context === "ROOM" ? room : null,
           total,
           items, // stored as JSON snapshot
           status: "PENDING",
@@ -54,12 +69,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // POST /api/orders/:id/txid
-  // PUBLIC — customer submits their MoMo TxId after paying
-  // Body: { txId }
-  // ===========================================================
   async submitTxId(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
@@ -91,11 +100,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // GET /api/orders/:id/status
-  // PUBLIC — customer polls this to see if business confirmed
-  // ===========================================================
   async getOrderStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
@@ -115,11 +119,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // GET /api/orders/business
-  // PROTECTED — business owner sees all their incoming orders
-  // ===========================================================
   async getBusinessOrders(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -157,11 +156,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // GET /api/orders/business/export
-  // PROTECTED — business owner downloads all orders as CSV
-  // ===========================================================
   async exportOrdersCsv(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -182,15 +176,18 @@ export const OrderController = {
       });
 
       const rows = [
-        ["Order ID", "Customer", "Phone", "Items", "Total (RWF)", "Status", "TxId", "Date"].join(","),
+        ["Order ID", "Customer", "Phone", "Context", "Table/Room", "Items", "Total (RWF)", "Status", "TxId", "Date"].join(","),
         ...orders.map((o) => {
           const items = (o.items as any[])
             .map((i: any) => `${i.name} x${i.qty}`)
             .join(" | ");
+          const location = o.orderContext === "ROOM" ? o.roomNumber ?? "" : o.tableNumber ?? "";
           return [
             o.id.slice(-8).toUpperCase(),
             `"${o.customerName.replace(/"/g, '""')}"`,
             o.phone,
+            o.orderContext,
+            `"${location.replace(/"/g, '""')}"`,
             `"${items.replace(/"/g, '""')}"`,
             o.total,
             o.status,
@@ -207,12 +204,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // DELETE /api/orders/:id
-  // PROTECTED — business owner deletes a completed or rejected order
-  // Only PAID or REJECTED orders can be deleted (not active ones)
-  // ===========================================================
   async deleteOrder(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -244,11 +235,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // POST /api/orders/:id/confirm
-  // PROTECTED — business owner confirms payment after verifying TxId
-  // ===========================================================
   async confirmOrder(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -280,11 +266,6 @@ export const OrderController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // POST /api/orders/:id/reject
-  // PROTECTED — business owner rejects order (wrong TxId or amount)
-  // ===========================================================
   async rejectOrder(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;

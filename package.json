@@ -5,7 +5,8 @@
   "description": "Digital NFC Business Card System - REST API",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "nodemon",
+    "dev:legacy": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
@@ -58,6 +59,7 @@
     "@typescript-eslint/parser": "^7.0.0",
     "dotenv-cli": "^11.0.0",
     "eslint": "^8.57.0",
+    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.0"

@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import prisma from "../lib/prisma";
-import cloudinary from "../lib/cloudinary";
-import { AppError } from "../middleware/error.middleware";
+import prisma from "../../lib/prisma";
+import cloudinary from "../../lib/cloudinary";
+import { AppError } from "../../middleware/error.middleware";
+import {
+  categoryFromBusinessType,
+  parseBusinessSettings,
+  parseBusinessType,
+} from "../../constants/business";
 
 function normalizeRequiredString(value: unknown, fieldName: string) {
   if (typeof value !== "string" || !value.trim()) {
@@ -35,13 +40,33 @@ export const BusinessController = {
     try {
       const userId = req.user!.userId;
       const name = normalizeRequiredString(req.body.name, "Business name");
-      const category = normalizeRequiredString(req.body.category, "Category");
+
+      let businessType;
+      try {
+        businessType = parseBusinessType(req.body.businessType ?? req.body.category);
+      } catch (err) {
+        throw new AppError(400, err instanceof Error ? err.message : "Invalid businessType");
+      }
+
+      const category =
+        typeof req.body.category === "string" && req.body.category.trim()
+          ? req.body.category.trim()
+          : categoryFromBusinessType(businessType);
       const description = readOptionalField(req.body, "description");
       const location = readOptionalField(req.body, "location");
       const phone = readOptionalField(req.body, "phone");
       const email = readOptionalField(req.body, "email");
       const website = readOptionalField(req.body, "website");
       const paymentCode = readOptionalField(req.body, "paymentCode");
+      const hasSettingsField = Object.prototype.hasOwnProperty.call(req.body, "settings");
+      let settings;
+      if (hasSettingsField) {
+        try {
+          settings = parseBusinessSettings(req.body.settings);
+        } catch (err) {
+          throw new AppError(400, err instanceof Error ? err.message : "Invalid settings");
+        }
+      }
       let imageUrl = readOptionalField(req.body, "imageUrl");
 
       // If a file was uploaded, stream it to Cloudinary
@@ -66,6 +91,7 @@ export const BusinessController = {
 
       const updateData = {
         name,
+        businessType,
         description,
         location,
         phone,
@@ -73,6 +99,7 @@ export const BusinessController = {
         email,
         website,
         paymentCode,
+        ...(settings !== undefined ? { settings } : {}),
         ...(imageUrl !== undefined ? { imageUrl } : {}),
       };
 
@@ -82,6 +109,7 @@ export const BusinessController = {
         create: {
           userId,
           name,
+          businessType,
           description,
           location,
           phone,
@@ -89,6 +117,7 @@ export const BusinessController = {
           email,
           website,
           paymentCode,
+          settings: settings ?? undefined,
           imageUrl: imageUrl ?? null,
         },
       });

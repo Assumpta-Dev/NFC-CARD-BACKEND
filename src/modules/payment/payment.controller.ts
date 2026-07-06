@@ -1,37 +1,15 @@
-// ===========================================================
-// PAYMENT CONTROLLER
-// ===========================================================
-// Handles all payment-related HTTP requests.
-// Uses Paypack (paypack.rw) as the payment gateway for Rwanda
-// MTN MoMo and Airtel Money payments.
-//
-// Endpoints:
-//   POST /api/payments/initiate  — start a payment, sends push to phone
-//   POST /api/payments/webhook   — Paypack calls this when payment completes
-//   GET  /api/payments/:id/status — manual status poll (fallback)
-//   GET  /api/payments/my        — user's payment history
-//   GET  /api/payments/:id       — single payment detail
-// ===========================================================
 
 import { Request, Response, NextFunction } from "express";
-import prisma from "../lib/prisma";
+import prisma from "../../lib/prisma";
 import { PaymentStatus, PaymentMethod } from "@prisma/client";
-import { cashin, getTransaction } from "../services/paypack.service";
+import { cashin, getTransaction } from "../../services/paypack.service";
 
 export const PaymentController = {
-  // ===========================================================
-  // POST /api/payments/initiate
-  // ===========================================================
-  // Creates a pending payment record then calls Paypack cashin.
-  // Paypack sends a USSD push to the customer's phone.
-  // Customer enters their PIN — Paypack calls our webhook with result.
   async initiatePayment(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
       const { amount, phone, plan, billingCycle, method } = req.body;
 
-      // Save payment as PENDING before calling Paypack
-      // so we have a record even if something goes wrong mid-flight
       const payment = await prisma.payment.create({
         data: {
           userId,
@@ -45,7 +23,7 @@ export const PaymentController = {
         },
       });
 
-      // Send payment request to customer's phone via Paypack
+
       const ref = await cashin(phone, amount);
 
       // Store the Paypack reference so we can match it in the webhook
@@ -67,15 +45,6 @@ export const PaymentController = {
     }
   },
 
-  // ===========================================================
-  // POST /api/payments/webhook
-  // ===========================================================
-  // Paypack calls this URL automatically when a transaction
-  // status changes (successful, failed, pending).
-  // Must respond with 200 immediately — Paypack retries if it doesn't.
-  //
-  // Webhook URL to register on Paypack dashboard:
-  //   https://<your-backend-domain>/api/payments/webhook
   async handleWebhook(req: Request, res: Response, next: NextFunction) {
     try {
       const { ref, status } = req.body;
@@ -108,12 +77,6 @@ export const PaymentController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // GET /api/payments/:id/status
-  // ===========================================================
-  // Manual status poll — frontend can call this every few seconds
-  // as a fallback if the webhook hasn't fired yet.
   async checkStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -156,11 +119,6 @@ export const PaymentController = {
       next(error);
     }
   },
-
-  // ===========================================================
-  // GET /api/payments/my
-  // ===========================================================
-  // Returns paginated payment history for the authenticated user.
   async getMyPayments(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;
@@ -193,10 +151,6 @@ export const PaymentController = {
     }
   },
 
-  // ===========================================================
-  // GET /api/payments/:id
-  // ===========================================================
-  // Returns a single payment — only the owner or admin can view it.
   async getPaymentById(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.userId;

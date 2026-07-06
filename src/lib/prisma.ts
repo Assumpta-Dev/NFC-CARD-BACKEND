@@ -11,12 +11,11 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
-  idleTimeoutMillis: 0,        // never drop idle connections
-  connectionTimeoutMillis: 0,  // never timeout waiting for a connection
-  max: 10,                     // pool size
+  idleTimeoutMillis: 0,
+  connectionTimeoutMillis: 0,
+  max: 10,
 });
 
-// Reconnect silently on connection errors — never crash the server
 pool.on("error", (err) => {
   console.error("pg pool error (auto-recovering):", err.message);
 });

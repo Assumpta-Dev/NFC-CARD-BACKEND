@@ -1,21 +1,8 @@
-// ===========================================================
-// MTN MOMO SERVICE
-// ===========================================================
-// Handles all communication with the MTN MoMo Collection API.
-// Flow:
-//   1. getAccessToken()  — exchanges User ID + API Key for a Bearer token
-//   2. requestToPay()    — sends a payment prompt to the customer's phone
-//   3. getPaymentStatus() — polls MTN to check if customer approved/rejected
-//
-// All credentials are read from environment variables — never hardcoded.
-// Rwanda sandbox base URL: https://sandbox.momodeveloper.mtn.co.rw
-// ===========================================================
 
 import https from "https";
 import http from "http";
 import { randomUUID } from "crypto";
 
-// Read all MoMo config from environment — set in .env
 const MOMO_BASE_URL = process.env.MOMO_BASE_URL!;
 const MOMO_COLLECTION_PRIMARY_KEY = process.env.MOMO_COLLECTION_PRIMARY_KEY!;
 const MOMO_COLLECTION_USER_ID = process.env.MOMO_COLLECTION_USER_ID!;

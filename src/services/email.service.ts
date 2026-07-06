@@ -1,45 +1,18 @@
-// ===========================================================
-// EMAIL SERVICE
-// ===========================================================
-// Handles all outgoing transactional emails using Nodemailer.
-// Uses Gmail SMTP with an App Password (not the account password).
-//
-// Emails sent:
-//   1. Welcome email  — sent after successful account registration
-//   2. Password reset — sent when user requests a password reset link
-//
-// Gmail App Password setup:
-//   1. Enable 2FA on your Google account
-//   2. Go to: Google Account → Security → App Passwords
-//   3. Generate a password for "Mail" → paste in GMAIL_APP_PASSWORD env var
-//
-// All config is read from environment variables — never hardcoded.
-// ===========================================================
+
 
 import nodemailer from "nodemailer";
 
-// ===========================================================
-// SMTP TRANSPORTER
-// ===========================================================
-// Reuse a single transporter instance across all email sends.
-// Creating a new transporter per email would open/close SMTP
-// connections unnecessarily.
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: process.env.GMAIL_USER,       // e.g. uwamariyaassumpta24@gmail.com
-    pass: process.env.GMAIL_APP_PASSWORD, // App password from Google Account settings
+    user: process.env.GMAIL_USER,   
+    pass: process.env.GMAIL_APP_PASSWORD, 
   },
 });
 
 const FROM = `"E-Card Platform" <${process.env.GMAIL_USER}>`;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "https://my-nfc-business-cards.netlify.app";
 
-// ===========================================================
-// WELCOME EMAIL
-// ===========================================================
-// Sent immediately after a user successfully creates an account.
-// Includes their name and a link to their dashboard.
 export async function sendWelcomeEmail(to: string, name: string): Promise<void> {
   const dashboardUrl = `${FRONTEND_URL}/dashboard`;
 
@@ -136,11 +109,6 @@ export async function sendWelcomeEmail(to: string, name: string): Promise<void> 
   });
 }
 
-// ===========================================================
-// PASSWORD RECOVERED CONFIRMATION EMAIL
-// ===========================================================
-// Sent after the user successfully resets their password.
-// Alerts them in case it wasn't them — security notification.
 export async function sendPasswordRecoveredEmail(
   to: string,
   name: string,
@@ -238,18 +206,11 @@ export async function sendPasswordRecoveredEmail(
   });
 }
 
-// ===========================================================
-// PASSWORD RESET EMAIL
-// ===========================================================
-// Sent when a user requests a password reset.
-// The reset link contains a secure token that expires in 1 hour.
-// Token is hashed before storing in DB — only the raw token is emailed.
 export async function sendPasswordResetEmail(
   to: string,
   name: string,
   resetToken: string,
-): Promise<void> {
-  // Frontend handles the reset form at /reset-password?token=xxx
+): Promise<void> {  
   const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
 
   await transporter.sendMail({

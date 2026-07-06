@@ -30,14 +30,15 @@ import {
   adminRouter,
   userRouter,
   publicCardRouter,
+  paymentRouter,
+  menuRouter,
+  businessRouter,
+  orderRouter,
 } from "./routes";
 
 import { errorHandler } from "./middleware/error.middleware";
 import { notFoundHandler } from "./middleware/error.middleware";
 import logger from "./utils/logger";
-import { paymentRouter, menuRouter, businessRouter, orderRouter } from "./routes";
-
-
 const app = express();
 const PORT = process.env.PORT || 5000;
 

@@ -1,13 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import prisma from "../lib/prisma";
-import cloudinary from "../lib/cloudinary";
-import { AppError } from "../middleware/error.middleware";
+import prisma from "../../lib/prisma";
+import cloudinary from "../../lib/cloudinary";
+import { AppError } from "../../middleware/error.middleware";
 
 export const MenuController = {
-  /**
-   * POST /api/menus
-   * Create menu (Food, Drinks, Desserts) — existing, untouched logic
-   */
   async createMenu(
     req: Request,
     res: Response,
@@ -48,11 +44,6 @@ export const MenuController = {
       next(error);
     }
   },
-
-  /**
-   * GET /api/menus
-   * Get all menus for the authenticated business (paginated)
-   */
   async getMenus(
     req: Request,
     res: Response,
@@ -107,11 +98,6 @@ export const MenuController = {
       next(error);
     }
   },
-
-  /**
-   * POST /api/menus/:menuId/items
-   * Add item to menu — with ownership check
-   */
   async addMenuItem(
     req: Request,
     res: Response,
@@ -199,11 +185,6 @@ export const MenuController = {
       next(error);
     }
   },
-
-  /**
-   * GET /api/menus/:menuId/items
-   * Get menu items (paginated) — existing, untouched
-   */
   async getMenuItems(
     req: Request,
     res: Response,
@@ -253,11 +234,6 @@ export const MenuController = {
       next(error);
     }
   },
-
-  /**
-   * DELETE /api/menus/:menuId/items/:itemId
-   * Delete a specific menu item (business owner only)
-   */
   async deleteMenuItem(
     req: Request,
     res: Response,

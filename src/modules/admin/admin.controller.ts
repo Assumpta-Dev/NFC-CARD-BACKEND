@@ -1,96 +1,10 @@
-// ===========================================================
-// PROFILE CONTROLLER
-// ===========================================================
-
 import { Request, Response, NextFunction } from "express";
-import { ProfileService } from "../services/profile.service";
-import { AppError } from "../middleware/error.middleware";
-
-export const ProfileController = {
-  /**
-   * GET /api/profile
-   * PROTECTED — returns the authenticated user's full profile for editing
-   */
-  async getMyProfile(_req: Request, res: Response, next: NextFunction) {
-    try {
-      const profile = await ProfileService.getProfile(_req.user!.userId);
-      res.status(200).json({ success: true, data: profile });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  /**
-   * POST /api/profile/photo
-   * PROTECTED — uploads a profile photo to Cloudinary
-   * Handled as multipart/form-data with field name 'photo'
-   */
-  async uploadPhoto(req: Request, res: Response, next: NextFunction) {
-    try {
-      if (!req.file) throw new AppError(400, "No photo file provided");
-      const imageUrl = await ProfileService.uploadPhoto(
-        req.user!.userId,
-        req.file.buffer,
-        req.file.mimetype,
-      );
-      res.status(200).json({ success: true, data: { imageUrl } });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  async uploadCoverPhoto(req: Request, res: Response, next: NextFunction) {
-    try {
-      if (!req.file) throw new AppError(400, "No photo file provided");
-      const coverImageUrl = await ProfileService.uploadCoverPhoto(
-        req.user!.userId,
-        req.file.buffer,
-        req.file.mimetype,
-      );
-      res.status(200).json({ success: true, data: { coverImageUrl } });
-    } catch (error) {
-      next(error);
-    }
-  },
-
-  /**
-   * PUT /api/profile
-   * PROTECTED — updates the authenticated user's profile
-   * Body is validated by UpdateProfileSchema middleware before reaching here
-   */
-  async updateMyProfile(_req: Request, res: Response, next: NextFunction) {
-    try {
-      const profile = await ProfileService.updateProfile(
-        _req.user!.userId,
-        _req.body,
-      );
-      res.status(200).json({
-        success: true,
-        data: profile,
-        message: "Profile updated successfully",
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-};
-
-// ===========================================================
-// ADMIN CONTROLLER
-// ===========================================================
-// Admin routes are protected by both requireAuth and requireAdmin.
-// These routes manage the system-level operations.
-// ===========================================================
-
-import { CardService } from "../services/card.service";
-import { ScanService } from "../services/scan.service";
-import prisma from "../lib/prisma";
+import { CardService } from "../../services/card.service";
+import { ScanService } from "../../services/scan.service";
+import { AppError } from "../../middleware/error.middleware";
+import prisma from "../../lib/prisma";
 
 export const AdminController = {
-  /**
-   * POST /api/admin/cards
-   * ADMIN — creates one or more new physical cards in the system
-   */
   async createCards(_req: Request, res: Response, next: NextFunction) {
     try {
       const { count = 1 } = _req.body;
@@ -105,10 +19,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/cards
-   * ADMIN — lists all cards in the system with owner and scan count
-   */
   async getAllCards(_req: Request, res: Response, next: NextFunction) {
     try {
       const cards = await CardService.getAllCards();
@@ -118,10 +28,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/users/count
-   * ADMIN — returns the total number of registered users
-   */
   async getUserCount(_req: Request, res: Response, next: NextFunction) {
     try {
       const result = await prisma.$queryRawUnsafe<[{ count: bigint }]>(`SELECT COUNT(*)::bigint as count FROM users`);
@@ -132,10 +38,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/cards/count
-   * ADMIN — returns the total number of cards in the system
-   */
   async getCardCount(_req: Request, res: Response, next: NextFunction) {
     try {
       const count = await prisma.card.count();
@@ -145,10 +47,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/scans/count
-   * ADMIN — returns total scan count in the requested range
-   */
   async getScanCount(req: Request, res: Response, next: NextFunction) {
     try {
       const range =
@@ -161,10 +59,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/users/active
-   * ADMIN — returns number of distinct users with scans in the requested range
-   */
   async getActiveUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const range =
@@ -177,10 +71,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/cards/active
-   * ADMIN — returns number of active cards with scans in the requested range
-   */
   async getActiveCards(req: Request, res: Response, next: NextFunction) {
     try {
       const range =
@@ -193,10 +83,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/analytics/daily-scans
-   * ADMIN — returns daily scan counts for the requested range
-   */
   async getDailyScanBreakdown(req: Request, res: Response, next: NextFunction) {
     try {
       const range =
@@ -209,10 +95,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/analytics/top-cards
-   * ADMIN — returns the most scanned cards in the requested range
-   */
   async getTopCards(req: Request, res: Response, next: NextFunction) {
     try {
       const limit = Math.min(Number(req.query.limit) || 5, 50);
@@ -226,10 +108,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/analytics/top-users
-   * ADMIN — returns the most scanned users in the requested range
-   */
   async getTopUsers(req: Request, res: Response, next: NextFunction) {
     try {
       const limit = Math.min(Number(req.query.limit) || 5, 50);
@@ -243,10 +121,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/scans/export
-   * ADMIN — exports all scan events to CSV
-   */
   async exportScansCsv(_req: Request, res: Response, next: NextFunction) {
     try {
       const csv = await ScanService.exportAllScansCsv();
@@ -261,10 +135,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * PUT /api/admin/cards/:cardId/assign
-   * ADMIN — assign a physical card to an existing user
-   */
   async assignCardToUser(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;
@@ -300,10 +170,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/users
-   * ADMIN — lists all registered users (without passwords)
-   */
   async getAllUsers(_req: Request, res: Response, next: NextFunction) {
     try {
       const page = Math.max(Number(_req.query.page) || 1, 1);
@@ -347,10 +213,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/stats
-   * ADMIN — system-wide statistics for admin dashboard overview
-   */
   async getSystemStats(_req: Request, res: Response, next: NextFunction) {
     try {
       const [totalUsers, totalCards, totalScans, activeCards] =
@@ -370,10 +232,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/businesses
-   * ADMIN — paginated list of all business profiles with cards and menu counts
-   */
   async getAllBusinesses(_req: Request, res: Response, next: NextFunction) {
     try {
       const page = Math.max(Number(_req.query.page) || 1, 1);
@@ -389,7 +247,6 @@ export const AdminController = {
             user: {
               select: { id: true, name: true, email: true },
             },
-            // @ts-ignore - Bypass phantom IDE cache error (relation exists in DB)
             cards: {
               select: { id: true, cardId: true, status: true },
             },
@@ -408,10 +265,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/businesses/:id
-   * ADMIN — full business detail with menus, menu items, and cards
-   */
   async getBusinessById(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
@@ -427,8 +280,7 @@ export const AdminController = {
               items: { orderBy: { createdAt: "desc" } },
             },
             orderBy: { createdAt: "asc" },
-          },
-          // @ts-ignore - Bypass phantom IDE cache error (relation exists in DB)
+          },  
           cards: {
             select: {
               id: true,
@@ -454,10 +306,6 @@ export const AdminController = {
     }
   },
 
-  /**
-   * GET /api/admin/payments
-   * ADMIN — paginated list of all payments across all users
-   */
   async getAllPayments(_req: Request, res: Response, next: NextFunction) {
     try {
       const page = Math.max(Number(_req.query.page) || 1, 1);
@@ -504,3 +352,4 @@ function parseRangeQuery(range: string, fallbackDays: number): number {
   }
   return fallbackDays;
 }
+

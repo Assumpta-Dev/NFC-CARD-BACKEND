@@ -1,39 +1,19 @@
-// ===========================================================
-// SHARED TYPESCRIPT TYPES & INTERFACES
-// ===========================================================
-// Centralizing types here prevents duplication across controllers,
-// services, and middleware. It also makes refactoring safer since
-// there is a single source of truth for data shapes.
-// ===========================================================
 
 import { Role, CardStatus } from '@prisma/client';
-
-// Re-export Prisma enums so other files import from one place
 export { Role, CardStatus };
 
-// ===========================================================
-// JWT PAYLOAD
-// The data encoded inside the JWT token.
-// Kept minimal — only what middleware needs to identify a user.
-// Heavy data (name, email) is fetched from DB when needed.
-// ===========================================================
 export interface JwtPayload {
   userId: string;
   email: string;
   role: Role;
 }
 
-// ===========================================================
-// REQUEST BODY TYPES (Zod validates these at the API boundary)
-// Defined here so controllers and services share the same shape
-// ===========================================================
-
 export interface RegisterBody {
   name: string;
   email: string;
   password: string;
   role?: "USER" | "BUSINESS";
-  cardId?: string; // Optional: user may activate a card at registration
+  cardId?: string; 
 }
 
 export interface LoginBody {
@@ -55,38 +35,29 @@ export interface UpdateProfileBody {
 }
 
 export interface LinkBody {
-  type: string;   // e.g. "instagram", "linkedin"
-  label: string;  // Display text
-  url: string;    // Full URL
+  type: string;
+  label: string;
+  url: string;
   order?: number;
 }
 
-// ===========================================================
-// RESPONSE TYPES
-// Standardized response shapes ensure the frontend
-// always knows what structure to expect from the API.
-// ===========================================================
-
-// Wraps all successful API responses in a consistent envelope
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T;
   message?: string;
 }
 
-// Wraps all error responses
 export interface ApiError {
   success: false;
   error: string;
-  details?: unknown; // Zod validation errors, etc.
+  details?: unknown;
 }
 
-// Analytics summary for the user dashboard
 export interface ScanAnalytics {
   totalScans: number;
   scansToday: number;
   scansThisWeek: number;
-  dailyBreakdown: DailyScanCount[]; // For the activity chart
+  dailyBreakdown: DailyScanCount[];
   deviceBreakdown: {
     mobile: number;
     desktop: number;
@@ -94,12 +65,10 @@ export interface ScanAnalytics {
 }
 
 export interface DailyScanCount {
-  date: string;  // ISO date string "YYYY-MM-DD"
+  date: string;
   count: number;
 }
 
-// Public profile view (returned to anyone who scans the card)
-// Does NOT include userId or any internal IDs
 export interface PublicProfile {
   fullName: string;
   jobTitle: string | null;
@@ -121,15 +90,8 @@ export interface PublicLink {
   order: number;
 }
 
-// ===========================================================
-// EXPRESS AUGMENTATION
-// Extends Express's Request type to include the authenticated
-// user after the auth middleware has verified the JWT.
-// This avoids casting req.user everywhere in controllers.
-// ===========================================================
 declare global {
   namespace Express {
-    // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace Multer {
       interface File {
         fieldname: string;

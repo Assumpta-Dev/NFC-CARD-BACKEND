@@ -1,34 +1,9 @@
-// ===========================================================
-// SCAN SERVICE
-// ===========================================================
-// Handles recording scan events and computing analytics.
-//
-// Performance design choices:
-//   - Scan recording is fast: one DB insert per tap/scan
-//   - Analytics queries use date-range filters + aggregations
-//   - The scans table has a compound index (cardId, timestamp)
-//     which makes time-based range queries efficient
-//
-// In a high-traffic system, scan events could be queued
-// (Redis/RabbitMQ) and written in batches to reduce DB load.
-// For MVP scale, direct writes are fine.
-// ===========================================================
-
 import { ScanAnalytics, DailyScanCount } from "../types";
 import logger from "../utils/logger";
 import prisma from "../lib/prisma";
 
 export const ScanService = {
-  /**
-   * Record a scan event when a card is opened via NFC or QR.
-   * This is called automatically on every card view — no user action needed.
-   *
-   * Device type is derived from User-Agent string.
-   * IP is stored for approximate geolocation (future feature).
-   */
   async recordScan(cardInternalId: string, userAgent?: string, ip?: string) {
-    // Determine device type from User-Agent string
-    // Simple heuristic: mobile keywords vs everything else
     const device = detectDevice(userAgent);
 
     try {
@@ -44,57 +19,36 @@ export const ScanService = {
       logger.info("Scan recorded", { cardId: cardInternalId, device });
       return scan;
     } catch (error) {
-      // Scan recording failure should NOT break the card view experience
-      // Log the error but don't throw — the card still loads successfully
       logger.error("Failed to record scan", { error, cardId: cardInternalId });
       return null;
     }
   },
 
-  /**
-   * Get analytics for a specific card.
-   * Returns aggregated stats for the user dashboard:
-   *   - Total scans
-   *   - Scans today
-   *   - Scans this week
-   *   - Daily breakdown for the chart (last 30 days)
-   *   - Device breakdown (mobile vs desktop)
-   */
   async getCardAnalytics(cardInternalId: string): Promise<ScanAnalytics> {
     const now = new Date();
 
-    // Calculate date boundaries for "today" and "this week"
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - 7); // Last 7 days
+    startOfWeek.setDate(now.getDate() - 7);
     startOfWeek.setHours(0, 0, 0, 0);
 
     const startOf30Days = new Date(now);
     startOf30Days.setDate(now.getDate() - 30);
     startOf30Days.setHours(0, 0, 0, 0);
 
-    // ----------------------------------------------------------
-    // Run all queries in parallel for performance
-    // These are independent queries — no need to wait sequentially
-    // ----------------------------------------------------------
     const [totalScans, scansToday, scansThisWeek, last30DaysScans] =
       await Promise.all([
-        // Total all-time scans
         prisma.scan.count({ where: { cardId: cardInternalId } }),
-
-        // Scans in the last 24 hours
         prisma.scan.count({
           where: { cardId: cardInternalId, timestamp: { gte: startOfToday } },
         }),
 
-        // Scans in the last 7 days
         prisma.scan.count({
           where: { cardId: cardInternalId, timestamp: { gte: startOfWeek } },
         }),
 
-        // All scans in last 30 days (for chart and device breakdown)
         prisma.scan.findMany({
           where: { cardId: cardInternalId, timestamp: { gte: startOf30Days } },
           select: { timestamp: true, device: true },
@@ -102,21 +56,14 @@ export const ScanService = {
         }),
       ]);
 
-    // ----------------------------------------------------------
-    // Compute daily breakdown from the raw scan records
-    // We group by date string "YYYY-MM-DD" and count per day
-    // Done in-app (not DB) for simplicity — acceptable at MVP scale
-    // ----------------------------------------------------------
     const dailyMap = new Map<string, number>();
 
-    // Pre-fill the last 30 days with 0 so the chart shows empty days too
     for (let i = 29; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
       dailyMap.set(d.toISOString().split("T")[0], 0);
     }
 
-    // Count scans per day
     for (const scan of last30DaysScans) {
       const day = scan.timestamp.toISOString().split("T")[0];
       dailyMap.set(day, (dailyMap.get(day) || 0) + 1);
@@ -126,7 +73,6 @@ export const ScanService = {
       ([date, count]) => ({ date, count }),
     );
 
-    // Device breakdown
     const mobileCount = last30DaysScans.filter(
       (s) => s.device === "mobile",
     ).length;

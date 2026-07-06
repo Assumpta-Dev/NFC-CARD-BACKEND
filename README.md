@@ -25,12 +25,18 @@ A production-ready **Node.js + TypeScript + Express + Prisma + PostgreSQL** REST
 ```
 backend/
 ├── src/
-│   ├── controllers/        # HTTP handlers — thin, delegate to services
-│   │   ├── auth.controller.ts
-│   │   ├── card.controller.ts
-│   │   └── profile.controller.ts  (also exports AdminController)
+│   ├── modules/            # Feature modules — each has controller + routes
+│   │   ├── auth/
+│   │   ├── card/
+│   │   ├── profile/
+│   │   ├── user/
+│   │   ├── admin/
+│   │   ├── business/
+│   │   ├── menu/
+│   │   ├── payment/
+│   │   └── order/
 │   ├── routes/
-│   │   └── index.ts        # All route definitions wired to controllers
+│   │   └── index.ts        # Re-exports all module routers
 │   ├── services/           # Business logic — testable, no HTTP context
 │   │   ├── auth.service.ts
 │   │   ├── card.service.ts
@@ -95,7 +101,17 @@ npm run dev
 
 ---
 
-## API Endpoints
+## API Documentation
+
+Full endpoint reference (request bodies, responses, auth, examples):
+
+**[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**
+
+Interactive Swagger UI (development): `http://localhost:5000/api-docs`
+
+---
+
+## API Endpoints (summary)
 
 ### Public (No Auth Required)
 | Method | Path | Description |

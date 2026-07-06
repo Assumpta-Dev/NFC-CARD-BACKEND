@@ -1,15 +1,8 @@
-// ===========================================================
-// PRISMA SEED SCRIPT
-// ===========================================================
-// Seeds the database with initial data for development/testing
-// Run with: npx prisma db seed
-// Only use this in development - production data goes through APIs
-// ===========================================================
 
 import dotenv from "dotenv";
 dotenv.config();
 
-import { PrismaClient, CardStatus, Role } from "@prisma/client";
+import { PrismaClient, CardStatus, Role, BusinessType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
@@ -135,22 +128,30 @@ async function main() {
     where: { userId: demoBusinessUser.id },
     update: {
       name: "Mama Kitchen",
+      businessType: BusinessType.RESTAURANT,
       category: "restaurant",
       description: "Home-style meals, fresh juice, and breakfast favorites.",
       location: "Kigali, Rwanda",
       phone: "0788000002",
       email: businessEmail,
       website: "https://mamakitchen.rw",
+      settings: {
+        operatingHours: "Mon–Sun 7am–9pm",
+      },
     },
     create: {
       userId: demoBusinessUser.id,
       name: "Mama Kitchen",
+      businessType: BusinessType.RESTAURANT,
       category: "restaurant",
       description: "Home-style meals, fresh juice, and breakfast favorites.",
       location: "Kigali, Rwanda",
       phone: "0788000002",
       email: businessEmail,
       website: "https://mamakitchen.rw",
+      settings: {
+        operatingHours: "Mon–Sun 7am–9pm",
+      },
     },
   });
 
