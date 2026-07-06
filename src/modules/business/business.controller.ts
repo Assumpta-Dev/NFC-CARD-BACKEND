@@ -7,6 +7,7 @@ import {
   parseBusinessSettings,
   parseBusinessType,
 } from "../../constants/business";
+import { BusinessAnalyticsService } from "../../services/business-analytics.service";
 
 function normalizeRequiredString(value: unknown, fieldName: string) {
   if (typeof value !== "string" || !value.trim()) {
@@ -276,6 +277,66 @@ export const BusinessController = {
         message: "Card linked to your business successfully",
         data: updated,
       });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/business/analytics
+   * Revenue, orders, and operational insights for the business dashboard
+   */
+  async getBusinessAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.userId;
+      const business = await BusinessAnalyticsService.getBusinessIdForUser(userId);
+
+      if (!business) {
+        res.status(404).json({
+          success: false,
+          message: "No business profile found. Create one first.",
+        });
+        return;
+      }
+
+      const data = await BusinessAnalyticsService.getEarningsDashboard(business.id);
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /**
+   * GET /api/business/analytics/scans?cardId=
+   * NFC scan analytics for linked business cards
+   */
+  async getBusinessScanAnalytics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.userId;
+      const cardId =
+        typeof req.query.cardId === "string" ? req.query.cardId : undefined;
+
+      const business = await BusinessAnalyticsService.getBusinessIdForUser(userId);
+
+      if (!business) {
+        res.status(404).json({
+          success: false,
+          message: "No business profile found. Create one first.",
+        });
+        return;
+      }
+
+      const data = await BusinessAnalyticsService.getScanAnalytics(
+        business.id,
+        cardId,
+      );
+
+      if (cardId && data === null) {
+        res.status(404).json({ success: false, message: "Card not found" });
+        return;
+      }
+
+      res.status(200).json({ success: true, data });
     } catch (error) {
       next(error);
     }

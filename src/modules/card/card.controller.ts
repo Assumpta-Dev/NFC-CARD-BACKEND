@@ -2,6 +2,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { CardService } from '../../services/card.service';
 import { ScanService } from '../../services/scan.service';
+import { BusinessAnalyticsService } from '../../services/business-analytics.service';
 import { generateVCard } from '../../utils/vcard';
 import { AppError } from '../../middleware/error.middleware';
 
@@ -193,8 +194,13 @@ export const CardController = {
       const { cardId } = req.params;
       const card = await CardService.getCardByPublicId(cardId);
 
-      // Authorization check: only the card owner (or admin) can view analytics
-      if (card.userId !== req.user!.userId && req.user!.role !== 'ADMIN') {
+      const isOwner = card.userId === req.user!.userId;
+      const isBusinessOwner = await BusinessAnalyticsService.userOwnsBusinessCard(
+        req.user!.userId,
+        cardId,
+      );
+
+      if (!isOwner && !isBusinessOwner && req.user!.role !== 'ADMIN') {
         throw new AppError(403, 'You do not have access to this card\'s analytics');
       }
 
