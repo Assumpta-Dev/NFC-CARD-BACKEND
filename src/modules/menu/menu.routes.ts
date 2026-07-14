@@ -14,6 +14,12 @@ menuRouter.post(
   uploadPhoto,
   MenuController.addMenuItem,
 );
+menuRouter.patch(
+  "/:menuId/items/:itemId",
+  requireAuth,
+  requireBusiness,
+  MenuController.updateMenuItem,
+);
 menuRouter.delete(
   "/:menuId/items/:itemId",
   requireAuth,

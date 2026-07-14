@@ -106,7 +106,17 @@ export const MenuController = {
     try {
       const userId = req.user!.userId;
       const { menuId } = req.params;
-      const { name, price, description } = req.body;
+      const {
+        name,
+        price,
+        description,
+        customizationHint,
+        allowsSpecialInstructions,
+        customizationOptions,
+        isSoldOut,
+        availability,
+        station,
+      } = req.body;
 
       // Ownership check: verify the menu belongs to this user's business
       const business = await prisma.businessProfile.findUnique({
@@ -164,12 +174,51 @@ export const MenuController = {
 
       const processedPrice = typeof price === 'string' ? parseFloat(price) : price;
 
+      let parsedOptions: unknown = undefined;
+      if (customizationOptions !== undefined && customizationOptions !== null && customizationOptions !== "") {
+        try {
+          parsedOptions =
+            typeof customizationOptions === "string"
+              ? JSON.parse(customizationOptions)
+              : customizationOptions;
+        } catch {
+          res.status(400).json({
+            success: false,
+            message: "customizationOptions must be valid JSON",
+          });
+          return;
+        }
+      }
+
+      const allowSpecial =
+        allowsSpecialInstructions === undefined || allowsSpecialInstructions === null
+          ? true
+          : allowsSpecialInstructions === true ||
+            allowsSpecialInstructions === "true" ||
+            allowsSpecialInstructions === "1";
+
       const item = await prisma.menuItem.create({
         data: {
           name,
           price: processedPrice, // ensures multipart inputs are correctly casted to Float
           description,
           menuId,
+          customizationHint:
+            typeof customizationHint === "string" && customizationHint.trim()
+              ? customizationHint.trim().slice(0, 300)
+              : null,
+          allowsSpecialInstructions: allowSpecial,
+          isSoldOut:
+            isSoldOut === true || isSoldOut === "true" || isSoldOut === "1",
+          availability: ["ALL", "HAPPY_HOUR", "ROOM_SERVICE", "DINE_IN"].includes(
+            String(availability ?? "").toUpperCase(),
+          )
+            ? (String(availability).toUpperCase() as any)
+            : "ALL",
+          station: ["KITCHEN", "BAR", "FLOOR"].includes(String(station ?? "").toUpperCase())
+            ? (String(station).toUpperCase() as any)
+            : "KITCHEN",
+          ...(parsedOptions !== undefined ? { customizationOptions: parsedOptions as object } : {}),
           ...(imageUrl ? { imageUrl } : {}),
         },
       });
@@ -185,6 +234,117 @@ export const MenuController = {
       next(error);
     }
   },
+
+  async updateMenuItem(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const { menuId, itemId } = req.params;
+      const {
+        name,
+        price,
+        description,
+        customizationHint,
+        allowsSpecialInstructions,
+        customizationOptions,
+        isSoldOut,
+        availability,
+        station,
+      } = req.body;
+
+      const business = await prisma.businessProfile.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!business) {
+        res.status(403).json({ success: false, message: "No business profile found." });
+        return;
+      }
+
+      const menu = await prisma.menu.findUnique({
+        where: { id: menuId },
+        select: { businessId: true },
+      });
+      if (!menu || menu.businessId !== business.id) {
+        res.status(403).json({ success: false, message: "You do not have access to this menu" });
+        return;
+      }
+
+      const existing = await prisma.menuItem.findFirst({
+        where: { id: itemId, menuId },
+      });
+      if (!existing) {
+        res.status(404).json({ success: false, message: "Menu item not found" });
+        return;
+      }
+
+      const data: Record<string, unknown> = {};
+      if (typeof name === "string" && name.trim()) data.name = name.trim();
+      if (price !== undefined) {
+        data.price = typeof price === "string" ? parseFloat(price) : price;
+      }
+      if (description !== undefined) {
+        data.description = typeof description === "string" ? description : null;
+      }
+      if (customizationHint !== undefined) {
+        data.customizationHint =
+          typeof customizationHint === "string" && customizationHint.trim()
+            ? customizationHint.trim().slice(0, 300)
+            : null;
+      }
+      if (allowsSpecialInstructions !== undefined) {
+        data.allowsSpecialInstructions =
+          allowsSpecialInstructions === true ||
+          allowsSpecialInstructions === "true" ||
+          allowsSpecialInstructions === "1";
+      }
+      if (isSoldOut !== undefined) {
+        data.isSoldOut =
+          isSoldOut === true || isSoldOut === "true" || isSoldOut === "1";
+      }
+      if (availability !== undefined) {
+        const a = String(availability).toUpperCase();
+        if (["ALL", "HAPPY_HOUR", "ROOM_SERVICE", "DINE_IN"].includes(a)) {
+          data.availability = a;
+        }
+      }
+      if (station !== undefined) {
+        const s = String(station).toUpperCase();
+        if (["KITCHEN", "BAR", "FLOOR"].includes(s)) data.station = s;
+      }
+      if (customizationOptions !== undefined) {
+        if (customizationOptions === null || customizationOptions === "") {
+          data.customizationOptions = null;
+        } else {
+          try {
+            data.customizationOptions =
+              typeof customizationOptions === "string"
+                ? JSON.parse(customizationOptions)
+                : customizationOptions;
+          } catch {
+            res.status(400).json({
+              success: false,
+              message: "customizationOptions must be valid JSON",
+            });
+            return;
+          }
+        }
+      }
+
+      const item = await prisma.menuItem.update({
+        where: { id: itemId },
+        data,
+      });
+
+      res.status(200).json({ success: true, data: item });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async getMenuItems(
     req: Request,
     res: Response,
