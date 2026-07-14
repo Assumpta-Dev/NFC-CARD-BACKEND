@@ -14,3 +14,4 @@ export { businessRouter } from "../modules/business/business.routes";
 export { menuRouter } from "../modules/menu/menu.routes";
 export { paymentRouter } from "../modules/payment/payment.routes";
 export { orderRouter } from "../modules/order/order.routes";
+export { staffRouter } from "../modules/staff/staff.routes";
