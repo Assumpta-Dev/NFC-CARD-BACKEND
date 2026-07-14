@@ -1,5 +1,4 @@
 
-
 datasource db {
   provider = "postgresql"
 }
@@ -22,6 +21,7 @@ model User {
   cards           Card[] 
   profile         Profile? 
   businessProfile BusinessProfile?
+  staffMemberships BusinessStaff[]
   payments        Payment[] 
   subscriptions   Subscription[]
 
@@ -91,8 +91,31 @@ model BusinessProfile {
   menus Menu[] 
   cards Card[] 
   orders Order[]
+  staff BusinessStaff[]
+  guestFavorites GuestFavorite[]
 
   @@map("business_profiles")
+}
+
+/// Staff members who can access the live order portal for a business
+model BusinessStaff {
+  id         String    @id @default(cuid())
+  businessId String
+  userId     String
+  staffRole  StaffRole @default(ORDERS)
+  /// Which station this staff watches: KITCHEN | BAR | FLOOR | ALL
+  station    PrepStation @default(ALL)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, userId])
+  @@index([userId])
+  @@index([businessId])
+  @@map("business_staff")
 }
 
 model Menu {
@@ -114,6 +137,17 @@ model MenuItem {
   price       Float
   imageUrl    String?
   description String?
+  /// Placeholder shown when guests customize this item (e.g. "less cheese, no onions…")
+  customizationHint String?
+  /// When true, guests can type free-text special instructions
+  allowsSpecialInstructions Boolean @default(true)
+  /// Structured options: { groups: [{ id, name, required, maxSelect, options: [{ id, name, priceDelta }] }] }
+  customizationOptions Json?
+  isSoldOut       Boolean          @default(false)
+  /// ALL | HAPPY_HOUR | ROOM_SERVICE | DINE_IN
+  availability    ItemAvailability @default(ALL)
+  /// Kitchen / bar / floor routing for KDS
+  station         PrepStation      @default(KITCHEN)
   createdAt   DateTime @default(now())
 
 
@@ -204,27 +238,75 @@ model Order {
   orderContext  OrderContext @default(TABLE)
   tableNumber   String?
   roomNumber    String?
+  /// Order-level special requests visible to kitchen/bar/staff
+  notes         String?
   total         Float
   status        OrderStatus  @default(PENDING)
+  prepStatus    PrepStatus   @default(NONE)
   txId          String?
+  /// Snapshot lines with lineId, station, linePrepStatus, mods, notes
   items         Json
+  /// Hash of phone+items for duplicate-order guard
+  cartHash      String?
+  /// Wait estimate (minutes) snapped at place-time from business settings
+  estimatedWaitMinutes Int?
+  rejectReasonCode String?
+  rejectReason     String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
   business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  events   OrderEvent[]
 
   @@index([businessId])
   @@index([status])
+  @@index([prepStatus])
+  @@index([businessId, phone, cartHash])
   @@map("orders")
+}
+
+/// Who confirmed / rejected / bumped prep — audit for MoMo disputes
+model OrderEvent {
+  id          String   @id @default(cuid())
+  orderId     String
+  actorUserId String?
+  actorName   String?
+  action      String
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+/// Last order cart for "Same as last time" by phone + business
+model GuestFavorite {
+  id         String   @id @default(cuid())
+  businessId String
+  phone      String
+  customerName String?
+  items      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, phone])
+  @@index([businessId, phone])
+  @@map("guest_favorites")
 }
 
 enum OrderContext {
   TABLE
   ROOM
+  BAR_SEAT
 }
 
 enum BusinessType {
   RESTAURANT
+  BAR
   HOTEL
   MOTEL
   CAFE
@@ -236,6 +318,35 @@ enum OrderStatus {
   WAITING_VERIFICATION // Customer submitted TxId, waiting for business to verify
   PAID                 // Business confirmed payment
   REJECTED             // Business rejected (wrong TxId or amount)
+}
+
+/// Kitchen / bar / room-service fulfilment tracking
+enum PrepStatus {
+  NONE
+  RECEIVED
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum StaffRole {
+  ORDERS
+  MANAGER
+}
+
+enum PrepStation {
+  KITCHEN
+  BAR
+  FLOOR
+  ALL
+}
+
+enum ItemAvailability {
+  ALL
+  HAPPY_HOUR
+  ROOM_SERVICE
+  DINE_IN
 }
 
 enum PaymentStatus {
@@ -274,7 +385,8 @@ enum SubscriptionStatus {
 enum Role {
   USER
   ADMIN
-  BUSINESS // NEW
+  BUSINESS
+  STAFF
 }
 
 enum CardStatus {

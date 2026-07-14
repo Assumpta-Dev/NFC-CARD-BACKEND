@@ -59,6 +59,23 @@ export function requireBusiness(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+/** Owner, staff order portal, or admin */
+export function requireBusinessOrStaff(req: Request, res: Response, next: NextFunction): void {
+  const role = req.user?.role as string | undefined;
+  const allowed = role === "BUSINESS" || role === "ADMIN" || role === "STAFF";
+  if (!req.user || !allowed) {
+    logger.warn("Non-business/staff user attempted to access order portal", {
+      userId: req.user?.userId,
+      role: req.user?.role,
+      route: req.path,
+    });
+    res.status(403).json({ success: false, error: "Business or staff access required" });
+    return;
+  }
+
+  next();
+}
+
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   try {
     const authHeader = req.headers.authorization;

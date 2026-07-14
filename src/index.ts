@@ -14,6 +14,7 @@
 // ===========================================================
 
 import "dotenv/config";
+import http from "http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -34,12 +35,15 @@ import {
   menuRouter,
   businessRouter,
   orderRouter,
+  staffRouter,
 } from "./routes";
 
 import { errorHandler } from "./middleware/error.middleware";
 import { notFoundHandler } from "./middleware/error.middleware";
+import { initOrderRealtime } from "./services/order-realtime.service";
 import logger from "./utils/logger";
 const app = express();
+const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // ===========================================================
@@ -169,6 +173,7 @@ app.use("/api/business", businessRouter);
 app.use("/api/menu", menuRouter);
 app.use("/api/payments", paymentRouter);
 app.use("/api/orders", orderRouter);
+app.use("/api/staff", staffRouter);
 
 // ===========================================================
 // ERROR HANDLERS
@@ -177,10 +182,13 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 // ===========================================================
-// START SERVER
+// START SERVER + WEBSOCKETS
 // ===========================================================
-app.listen(PORT, () => {
+initOrderRealtime(httpServer);
+
+httpServer.listen(PORT, () => {
   logger.info(`🚀 NFC Card API running on http://localhost:${PORT}`);
+  logger.info(`📡 Orders WebSocket on ws://localhost:${PORT}/socket.io`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
   logger.info(`🔗 Allowing CORS from: ${process.env.FRONTEND_URL}`);
 });
