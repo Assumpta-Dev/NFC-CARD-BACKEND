@@ -66,25 +66,57 @@ async function enrichItemsWithMenuMeta(
   items: OrderItemSnapshot[],
   orderContext: string,
   settings: BusinessSettings,
-): Promise<OrderItemSnapshot[]> {
+): Promise<{
+  items: OrderItemSnapshot[];
+  stockAdjustments: Array<{ itemId: string; qty: number; nextStock: number }>;
+}> {
   const ids = [...new Set(items.map((i) => i.id))];
   const menuItems = await prisma.menuItem.findMany({
     where: { id: { in: ids } },
     select: {
       id: true,
       isSoldOut: true,
+      trackInventory: true,
+      stockQuantity: true,
       availability: true,
       station: true,
       name: true,
     },
   });
   const byId = new Map(menuItems.map((m) => [m.id, m]));
+  const requestedQty = new Map<string, number>();
 
-  return items.map((item) => {
+  for (const item of items) {
+    requestedQty.set(item.id, (requestedQty.get(item.id) ?? 0) + item.qty);
+  }
+
+  const stockAdjustments: Array<{ itemId: string; qty: number; nextStock: number }> = [];
+
+  const enrichedItems = items.map((item) => {
     const meta = byId.get(item.id);
-    if (!meta) return { ...item, station: item.station ?? "KITCHEN", linePrepStatus: "QUEUED" };
+    if (!meta) {
+      return {
+        ...item,
+        station: item.station ?? "KITCHEN",
+        linePrepStatus: "QUEUED" as const,
+      };
+    }
     if (meta.isSoldOut) {
       throw new Error(`"${meta.name}" is sold out`);
+    }
+    if (meta.trackInventory) {
+      const availableStock = meta.stockQuantity ?? 0;
+      const qtyNeeded = requestedQty.get(item.id) ?? item.qty;
+      if (qtyNeeded > availableStock) {
+        throw new Error(`"${meta.name}" has only ${availableStock} left in stock`);
+      }
+      if (!stockAdjustments.some((entry) => entry.itemId === item.id)) {
+        stockAdjustments.push({
+          itemId: item.id,
+          qty: qtyNeeded,
+          nextStock: availableStock - qtyNeeded,
+        });
+      }
     }
     if (!itemAllowedForContext(meta.availability, orderContext, settings)) {
       throw new Error(`"${meta.name}" is not available for this order type right now`);
@@ -95,6 +127,8 @@ async function enrichItemsWithMenuMeta(
       linePrepStatus: "QUEUED" as const,
     };
   });
+
+  return { items: enrichedItems, stockAdjustments };
 }
 
 export const OrderController = {
@@ -112,15 +146,16 @@ export const OrderController = {
         forceDuplicate,
       } = req.body;
 
-      if (!businessId || !customerName?.trim() || !phone?.trim()) {
+      if (!businessId || !customerName?.trim()) {
         res.status(400).json({
           success: false,
-          message: "businessId, customerName, phone and items are required",
+          message: "businessId, customerName and items are required",
         });
         return;
       }
 
       let normalizedItems;
+      let stockAdjustments: Array<{ itemId: string; qty: number; nextStock: number }> = [];
       try {
         normalizedItems = normalizeOrderItems(items);
       } catch (err) {
@@ -181,7 +216,9 @@ export const OrderController = {
       }
 
       try {
-        normalizedItems = await enrichItemsWithMenuMeta(normalizedItems, context, settings);
+        const enriched = await enrichItemsWithMenuMeta(normalizedItems, context, settings);
+        normalizedItems = enriched.items;
+        stockAdjustments = enriched.stockAdjustments;
       } catch (err) {
         res.status(400).json({
           success: false,
@@ -190,14 +227,16 @@ export const OrderController = {
         return;
       }
 
-      const phoneTrim = phone.trim();
-      const cartHash = computeCartHash(phoneTrim, normalizedItems);
+      const reference = context === "ROOM" ? room : table;
+      const guestReference =
+        typeof phone === "string" && phone.trim() ? phone.trim() : reference;
+      const cartHash = computeCartHash(guestReference, normalizedItems);
 
       if (!forceDuplicate) {
         const recent = await prisma.order.findFirst({
           where: {
             businessId,
-            phone: phoneTrim,
+            phone: guestReference,
             cartHash,
             createdAt: { gte: new Date(Date.now() - DUPLICATE_WINDOW_MS) },
             status: { not: "REJECTED" },
@@ -221,39 +260,76 @@ export const OrderController = {
         typeof notes === "string" && notes.trim() ? notes.trim().slice(0, 1000) : null;
       const estimatedWaitMinutes = computeEstimatedWaitMinutes(settings);
 
-      const order = await prisma.order.create({
-        data: {
-          businessId,
-          customerName: customerName.trim(),
-          phone: phoneTrim,
-          orderContext: context,
-          tableNumber: context === "ROOM" ? null : table || null,
-          roomNumber: context === "ROOM" ? room : null,
-          notes: orderNotes,
-          total,
-          items: normalizedItems,
-          status: "PENDING",
-          prepStatus: "NONE",
-          cartHash,
-          estimatedWaitMinutes,
-        },
-      });
+      let order;
+      try {
+        order = await prisma.$transaction(async (tx) => {
+          for (const adjustment of stockAdjustments) {
+            const result = await tx.menuItem.updateMany({
+              where: {
+                id: adjustment.itemId,
+                trackInventory: true,
+                stockQuantity: { gte: adjustment.qty },
+              },
+              data: {
+                stockQuantity: { decrement: adjustment.qty },
+                isSoldOut: adjustment.nextStock <= 0,
+              },
+            });
 
-      await prisma.guestFavorite.upsert({
-        where: {
-          businessId_phone: { businessId, phone: phoneTrim },
-        },
-        create: {
-          businessId,
-          phone: phoneTrim,
-          customerName: customerName.trim(),
-          items: normalizedItems,
-        },
-        update: {
-          customerName: customerName.trim(),
-          items: normalizedItems,
-        },
-      });
+            if (result.count === 0) {
+              throw new Error(
+                "One or more items just went out of stock. Please review the cart and try again.",
+              );
+            }
+          }
+
+          const createdOrder = await tx.order.create({
+            data: {
+              businessId,
+              customerName: customerName.trim(),
+              phone: guestReference,
+              orderContext: context,
+              tableNumber: context === "ROOM" ? null : table || null,
+              roomNumber: context === "ROOM" ? room : null,
+              notes: orderNotes,
+              total,
+              items: normalizedItems,
+              // Temporary restaurant flow: send orders straight to prep without payment gating.
+              status: "PAID",
+              prepStatus: "RECEIVED",
+              cartHash,
+              estimatedWaitMinutes,
+            },
+          });
+
+          await tx.guestFavorite.upsert({
+            where: {
+              businessId_phone: { businessId, phone: guestReference },
+            },
+            create: {
+              businessId,
+              phone: guestReference,
+              customerName: customerName.trim(),
+              items: normalizedItems,
+            },
+            update: {
+              customerName: customerName.trim(),
+              items: normalizedItems,
+            },
+          });
+
+          return createdOrder;
+        });
+      } catch (err) {
+        res.status(400).json({
+          success: false,
+          message:
+            err instanceof Error
+              ? err.message
+              : "One or more items went out of stock. Please try again.",
+        });
+        return;
+      }
 
       await recordOrderEvent({
         orderId: order.id,
@@ -271,13 +347,13 @@ export const OrderController = {
   async getFavorite(req: Request, res: Response, next: NextFunction) {
     try {
       const businessId = String(req.query.businessId ?? "");
-      const phone = String(req.query.phone ?? "").trim();
-      if (!businessId || !phone) {
-        res.status(400).json({ success: false, message: "businessId and phone are required" });
+      const reference = String(req.query.reference ?? req.query.phone ?? "").trim();
+      if (!businessId || !reference) {
+        res.status(400).json({ success: false, message: "businessId and reference are required" });
         return;
       }
       const fav = await prisma.guestFavorite.findUnique({
-        where: { businessId_phone: { businessId, phone } },
+        where: { businessId_phone: { businessId, phone: reference } },
       });
       res.status(200).json({ success: true, data: fav });
     } catch (error) {
@@ -662,7 +738,11 @@ export const OrderController = {
       });
 
       const waMessage = `Hi ${order.customerName}, your order at ${order.business.name} could not be completed. Reason: ${reasonText}. Please contact us if you need help.`;
-      const whatsappUrl = buildGuestWhatsAppRejectLink(order.phone, waMessage);
+      const phoneDigits = order.phone.replace(/\D/g, "");
+      const canNotifyGuest = Boolean(notifyGuest) && phoneDigits.length >= 9;
+      const whatsappUrl = canNotifyGuest
+        ? buildGuestWhatsAppRejectLink(order.phone, waMessage)
+        : "";
 
       emitBusinessOrderEvent(updated.businessId, "order:updated", updated);
       res.status(200).json({
@@ -670,8 +750,8 @@ export const OrderController = {
         data: updated,
         notify: {
           whatsappUrl,
-          smsHint: `SMS to ${order.phone}: ${waMessage}`,
-          shouldNotify: Boolean(notifyGuest),
+          smsHint: canNotifyGuest ? `SMS to ${order.phone}: ${waMessage}` : "",
+          shouldNotify: canNotifyGuest,
         },
       });
     } catch (error) {

@@ -89,12 +89,37 @@ model BusinessProfile {
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   menus Menu[] 
+  inventoryResources InventoryResource[]
   cards Card[] 
   orders Order[]
   staff BusinessStaff[]
   guestFavorites GuestFavorite[]
 
   @@map("business_profiles")
+}
+
+model InventoryResource {
+  id               String                @id @default(cuid())
+  businessId       String
+  name             String
+  sku              String?
+  category         InventoryCategory     @default(INGREDIENT)
+  unit             InventoryUnit         @default(UNIT)
+  stockQuantity    Float                 @default(0)
+  lowStockThreshold Float                @default(0)
+  costPerUnit      Float?
+  supplier         String?
+  storageLocation  String?
+  notes            String?
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([businessId, category])
+  @@map("inventory_resources")
 }
 
 /// Staff members who can access the live order portal for a business
@@ -134,6 +159,7 @@ model MenuItem {
   id          String   @id @default(cuid())
   menuId      String
   name        String
+  sku         String?
   price       Float
   imageUrl    String?
   description String?
@@ -143,6 +169,9 @@ model MenuItem {
   allowsSpecialInstructions Boolean @default(true)
   /// Structured options: { groups: [{ id, name, required, maxSelect, options: [{ id, name, priceDelta }] }] }
   customizationOptions Json?
+  trackInventory Boolean @default(false)
+  stockQuantity  Int?
+  lowStockThreshold Int  @default(5)
   isSoldOut       Boolean          @default(false)
   /// ALL | HAPPY_HOUR | ROOM_SERVICE | DINE_IN
   availability    ItemAvailability @default(ALL)
@@ -347,6 +376,26 @@ enum ItemAvailability {
   HAPPY_HOUR
   ROOM_SERVICE
   DINE_IN
+}
+
+enum InventoryCategory {
+  INGREDIENT
+  PACKAGING
+  SUPPLY
+  PRODUCT
+  OTHER
+}
+
+enum InventoryUnit {
+  UNIT
+  KG
+  G
+  LITER
+  ML
+  BOX
+  PACK
+  BOTTLE
+  BAG
 }
 
 enum PaymentStatus {

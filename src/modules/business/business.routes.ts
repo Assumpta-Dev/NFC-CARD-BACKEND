@@ -31,6 +31,36 @@ businessRouter.get(
   BusinessController.getMyBusiness,
 );
 businessRouter.get(
+  "/inventory/reports/overview",
+  requireAuth,
+  requireBusiness,
+  BusinessController.getInventoryOverviewReport,
+);
+businessRouter.get(
+  "/inventory/resources",
+  requireAuth,
+  requireBusiness,
+  BusinessController.getInventoryResources,
+);
+businessRouter.post(
+  "/inventory/resources",
+  requireAuth,
+  requireBusiness,
+  BusinessController.createInventoryResource,
+);
+businessRouter.patch(
+  "/inventory/resources/:resourceId",
+  requireAuth,
+  requireBusiness,
+  BusinessController.updateInventoryResource,
+);
+businessRouter.delete(
+  "/inventory/resources/:resourceId",
+  requireAuth,
+  requireBusiness,
+  BusinessController.deleteInventoryResource,
+);
+businessRouter.get(
   "/card",
   requireAuth,
   requireBusiness,

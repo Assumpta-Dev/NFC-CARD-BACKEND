@@ -3,6 +3,17 @@ import prisma from "../../lib/prisma";
 import cloudinary from "../../lib/cloudinary";
 import { AppError } from "../../middleware/error.middleware";
 
+function parseBoolean(value: unknown, fallback: boolean) {
+  if (value === undefined || value === null) return fallback;
+  return value === true || value === "true" || value === "1";
+}
+
+function parseOptionalInteger(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = typeof value === "string" ? Number.parseInt(value, 10) : Number(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
 export const MenuController = {
   async createMenu(
     req: Request,
@@ -109,10 +120,14 @@ export const MenuController = {
       const {
         name,
         price,
+        sku,
         description,
         customizationHint,
         allowsSpecialInstructions,
         customizationOptions,
+        trackInventory,
+        stockQuantity,
+        lowStockThreshold,
         isSoldOut,
         availability,
         station,
@@ -190,17 +205,49 @@ export const MenuController = {
         }
       }
 
-      const allowSpecial =
-        allowsSpecialInstructions === undefined || allowsSpecialInstructions === null
-          ? true
-          : allowsSpecialInstructions === true ||
-            allowsSpecialInstructions === "true" ||
-            allowsSpecialInstructions === "1";
+      const allowSpecial = parseBoolean(allowsSpecialInstructions, true);
+      const shouldTrackInventory = parseBoolean(trackInventory, false);
+      const parsedStockQuantity = parseOptionalInteger(stockQuantity);
+      const parsedLowStockThreshold = parseOptionalInteger(lowStockThreshold);
+
+      if (parsedStockQuantity !== null && (!Number.isInteger(parsedStockQuantity) || parsedStockQuantity < 0)) {
+        res.status(400).json({
+          success: false,
+          message: "stockQuantity must be a whole number greater than or equal to 0",
+        });
+        return;
+      }
+
+      if (
+        parsedLowStockThreshold !== null &&
+        (!Number.isInteger(parsedLowStockThreshold) || parsedLowStockThreshold < 0)
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "lowStockThreshold must be a whole number greater than or equal to 0",
+        });
+        return;
+      }
+
+      if (shouldTrackInventory && parsedStockQuantity === null) {
+        res.status(400).json({
+          success: false,
+          message: "stockQuantity is required when inventory tracking is enabled",
+        });
+        return;
+      }
+
+      const normalizedStockQuantity = shouldTrackInventory ? parsedStockQuantity : null;
+      const normalizedLowStockThreshold =
+        parsedLowStockThreshold === null ? 5 : parsedLowStockThreshold;
+      const computedSoldOut =
+        normalizedStockQuantity !== null ? normalizedStockQuantity <= 0 : parseBoolean(isSoldOut, false);
 
       const item = await prisma.menuItem.create({
         data: {
           name,
           price: processedPrice, // ensures multipart inputs are correctly casted to Float
+          sku: typeof sku === "string" && sku.trim() ? sku.trim().slice(0, 80) : null,
           description,
           menuId,
           customizationHint:
@@ -208,8 +255,10 @@ export const MenuController = {
               ? customizationHint.trim().slice(0, 300)
               : null,
           allowsSpecialInstructions: allowSpecial,
-          isSoldOut:
-            isSoldOut === true || isSoldOut === "true" || isSoldOut === "1",
+          trackInventory: shouldTrackInventory,
+          stockQuantity: normalizedStockQuantity,
+          lowStockThreshold: normalizedLowStockThreshold,
+          isSoldOut: computedSoldOut,
           availability: ["ALL", "HAPPY_HOUR", "ROOM_SERVICE", "DINE_IN"].includes(
             String(availability ?? "").toUpperCase(),
           )
@@ -246,10 +295,14 @@ export const MenuController = {
       const {
         name,
         price,
+        sku,
         description,
         customizationHint,
         allowsSpecialInstructions,
         customizationOptions,
+        trackInventory,
+        stockQuantity,
+        lowStockThreshold,
         isSoldOut,
         availability,
         station,
@@ -283,6 +336,9 @@ export const MenuController = {
 
       const data: Record<string, unknown> = {};
       if (typeof name === "string" && name.trim()) data.name = name.trim();
+      if (sku !== undefined) {
+        data.sku = typeof sku === "string" && sku.trim() ? sku.trim().slice(0, 80) : null;
+      }
       if (price !== undefined) {
         data.price = typeof price === "string" ? parseFloat(price) : price;
       }
@@ -296,15 +352,72 @@ export const MenuController = {
             : null;
       }
       if (allowsSpecialInstructions !== undefined) {
-        data.allowsSpecialInstructions =
-          allowsSpecialInstructions === true ||
-          allowsSpecialInstructions === "true" ||
-          allowsSpecialInstructions === "1";
+        data.allowsSpecialInstructions = parseBoolean(allowsSpecialInstructions, true);
       }
+
+      const shouldTrackInventory =
+        trackInventory === undefined
+          ? existing.trackInventory
+          : parseBoolean(trackInventory, existing.trackInventory);
+
+      if (trackInventory !== undefined) {
+        data.trackInventory = shouldTrackInventory;
+      }
+
+      const parsedStockQuantity = parseOptionalInteger(stockQuantity);
+      if (stockQuantity !== undefined) {
+        if (parsedStockQuantity === null) {
+          data.stockQuantity = null;
+        } else if (!Number.isInteger(parsedStockQuantity) || parsedStockQuantity < 0) {
+          res.status(400).json({
+            success: false,
+            message: "stockQuantity must be a whole number greater than or equal to 0",
+          });
+          return;
+        } else {
+          data.stockQuantity = parsedStockQuantity;
+        }
+      }
+
+      const parsedLowStockThreshold = parseOptionalInteger(lowStockThreshold);
+      if (lowStockThreshold !== undefined) {
+        if (
+          parsedLowStockThreshold === null ||
+          !Number.isInteger(parsedLowStockThreshold) ||
+          parsedLowStockThreshold < 0
+        ) {
+          res.status(400).json({
+            success: false,
+            message: "lowStockThreshold must be a whole number greater than or equal to 0",
+          });
+          return;
+        }
+        data.lowStockThreshold = parsedLowStockThreshold;
+      }
+
+      const nextStockQuantity =
+        data.stockQuantity !== undefined
+          ? (data.stockQuantity as number | null)
+          : existing.stockQuantity;
+
+      if (shouldTrackInventory && nextStockQuantity === null) {
+        res.status(400).json({
+          success: false,
+          message: "stockQuantity is required when inventory tracking is enabled",
+        });
+        return;
+      }
+
       if (isSoldOut !== undefined) {
-        data.isSoldOut =
-          isSoldOut === true || isSoldOut === "true" || isSoldOut === "1";
+        data.isSoldOut = parseBoolean(isSoldOut, existing.isSoldOut);
       }
+
+      if (shouldTrackInventory) {
+        data.isSoldOut = (nextStockQuantity ?? 0) <= 0;
+      } else if (trackInventory !== undefined && !shouldTrackInventory) {
+        data.stockQuantity = null;
+      }
+
       if (availability !== undefined) {
         const a = String(availability).toUpperCase();
         if (["ALL", "HAPPY_HOUR", "ROOM_SERVICE", "DINE_IN"].includes(a)) {
